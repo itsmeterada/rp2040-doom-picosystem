@@ -342,7 +342,7 @@ target_compile_definitions(small_doom_common INTERFACE
         USE_LIGHTMAP_INDEXES=1 # saves about 9K
 
         #FRACBITS=15 # ha ha doesn't seem to be passed thru everywhere!
-        #NO_USE_ENDDOOM=1
+        NO_USE_ENDDOOM=1
         #NO_DRAW_VISPLANES=1
 
         USE_ERASE_FRAME=1 #
@@ -545,7 +545,7 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
 
         NO_Z_MALLOC_USER_PTR=1 # onyl needed for freeing textures i think
 
-        FIXED_SCREENWIDTH=1
+        #FIXED_SCREENWIDTH=1
         FLOOR_CEILING_CLIP_8BIT=1
 
 #        NO_USE_WI=1

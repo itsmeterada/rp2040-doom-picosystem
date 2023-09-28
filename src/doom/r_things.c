@@ -53,7 +53,7 @@ int no_draw_psprites;
 
 
 #define MINZ                (FRACUNIT*4)
-#define BASEYCENTER            (SCREENHEIGHT/2)
+#define BASEYCENTER            (VGASCREENHEIGHT/2)
 
 //void R_DrawColumn (void);
 //void R_DrawFuzzColumn (void);
@@ -853,7 +853,7 @@ void R_DrawPSprite(pspdef_t *psp) {
     flip = (boolean) spriteframe_unrotated_flipped(sprframe);
 
     // calculate edges of the shape
-    tx = psp->sx - (SCREENWIDTH / 2) * FRACUNIT;
+    tx = psp->sx - (VGASCREENWIDTH / 2) * FRACUNIT;
 
     tx -= sprite_offset(lump);
     x1 = (centerxfrac + FixedMul(tx, pspritescale)) >> FRACBITS;

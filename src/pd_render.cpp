@@ -1798,10 +1798,11 @@ static void draw_patch_columns(int patch_num, int patch_head, int16_t *col_heads
     if (patch_num == skytexture_patch) {
         for(int j=patch_head; j != -1;) {
             auto &c = render_cols[j & 0x7fffu];
-            c.scale = 0x10000;
+            c.scale = pspriteiscale;
             j = c.next;
         }
     }
+
     patch_decode_info pdi;
     get_patch_decoder(patch_num, &pdi);
     assert(pdi.w <= WHD_PATCH_MAX_WIDTH);
@@ -1820,6 +1821,11 @@ static void draw_patch_columns(int patch_num, int patch_head, int16_t *col_heads
         col_heads[col] = (int16_t)i;
         i = c.next;
         c.next = tmp;
+
+//player sprite needs its scale restored
+if (c.scale == 0) {
+    c.scale = pspriteiscale;
+}
 
         // we actually don't know how many pixels are in the column without looking at the run data, however
         // we can see the last pixel we've used, which means, as a bonus, we won't decode all of a column when we only
@@ -2460,6 +2466,7 @@ void maybe_draw_single_screen(int patch_num) {
 }
 
 void draw_stbar_on_framebuffer(int frame, boolean refresh) {
+#if (SCREENHEIGHT) != (MAIN_VIEWHEIGHT)
     V_BeginPatchList(vpatchlists->framebuffer);
     // we call ST_drawwidgets directly as we don't want to mess with palette stuff (we call this during startup when not initialized)
 //    ST_Drawer(false, refresh);
@@ -2469,6 +2476,7 @@ void draw_stbar_on_framebuffer(int frame, boolean refresh) {
     V_RestoreBuffer();
     V_DrawPatchList(vpatchlists->framebuffer);
     I_VideoBuffer = render_frame_buffer;
+#endif
 }
 
 static void draw_framebuffer_patches_fullscreen() {
@@ -2696,11 +2704,13 @@ void pd_end_frame(int wipe_start) {
                 break;
             }
             case WIPESTATE_REDRAW2: {
+#if (MAIN_VIEWHEIGHT) < (SCREENHEIGHT)
                 if (gamestate == GS_LEVEL) {
                     draw_stbar_on_framebuffer(render_frame_index ^ 1, true);
                 } else {
                     draw_fullscreen_background(MAIN_VIEWHEIGHT, SCREENHEIGHT);
                 }
+#endif
                 wipestate = WIPESTATE_SKIP3;
                 break;
             }
@@ -2805,7 +2815,7 @@ void pd_end_frame(int wipe_start) {
                     if (automapactive)
                         AM_Drawer();
                     // goes into overlay set above
-                    ST_Drawer(false, !pre_wipe_state);
+                    ST_Drawer(((MAIN_VIEWHEIGHT) == (SCREENHEIGHT)), !pre_wipe_state);
                     sub_gamestate = 0;
                     next_video_type = VIDEO_TYPE_DOUBLE;
                 }
@@ -3046,8 +3056,8 @@ void draw_cast_sprite(int sprite_lump) {
     // fortunately and entirely coincidentally the maximum height we need is EXACTLY 168-32 (which is how much offscreen buffer we have left)
     // 145 puts the bottom of the graphics at the bottom of that
     int ypos = (145 << FRACBITS) - sprite_topoffset(sprite_lump);
-    vis->texturemid = ((SCREENHEIGHT / 2) << FRACBITS) + FRACUNIT / 2 - ypos;
-    vis->x1 = SCREENWIDTH / 2 - (sprite_offset(sprite_lump) >> FRACBITS);
+    vis->texturemid = ((VGASCREENHEIGHT / 2) << FRACBITS) + FRACUNIT / 2 - ypos;
+    vis->x1 = VGASCREENWIDTH / 2 - (sprite_offset(sprite_lump) >> FRACBITS);
     vis->x2 = vis->x1 + ((sprite_width(sprite_lump) - 1) >> FRACBITS);
     vis->scale = pspritescale << detailshift;
 

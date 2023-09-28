@@ -29,6 +29,7 @@ HTIC*.pcx
 HEXEN*.pcx
 STRIFE*.pcx
 /build*
+/*build
 
 # These are the default patterns globally ignored by Subversion:
 *.o
@@ -57,3 +58,5 @@ GTAGS
 *.wad
 *.whd
 /cmake-*/
+
+/.vscode

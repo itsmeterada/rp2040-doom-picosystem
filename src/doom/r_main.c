@@ -954,7 +954,7 @@ boolean setsizeneeded;
 int setblocks;
 int setdetail;
 #else
-#define setblocks 10
+#define setblocks 11
 #define setdetail 0
 #endif
 
@@ -1022,8 +1022,8 @@ void R_ExecuteSetViewSize(void) {
     R_InitTextureMapping();
 
     // psprite scales
-    pspritescale = FRACUNIT * viewwidth / SCREENWIDTH;
-    pspriteiscale = FRACUNIT * SCREENWIDTH / viewwidth;
+    pspritescale = FRACUNIT * viewwidth / VGASCREENWIDTH;
+    pspriteiscale = FRACUNIT * VGASCREENWIDTH / viewwidth;
 
     // thing clipping
     for (i = 0; i < viewwidth; i++)

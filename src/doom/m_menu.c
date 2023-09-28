@@ -81,7 +81,7 @@ extern boolean		chat_on;		// in heads-up code
 isb_int8_t		mouseSensitivity = 5;
 
 // Show messages fdefault, 0 = off, 1 = on
-isb_int8_t		showMessages = 1;
+isb_int8_t		showMessages = 0;
 	
 
 // Blocky mode, has default, 0 = high, 1 = normal
@@ -2390,6 +2390,7 @@ static void M_DrawOPLDev(void)
 //
 void M_Drawer (void)
 {
+return;
 #if !NO_DRAW_MENU
     static short	x;
     static short	y;

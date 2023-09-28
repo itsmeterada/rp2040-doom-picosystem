@@ -25,10 +25,14 @@
 
 // Screen width and height.
 
-#define SCREENWIDTH  320
-#define SCREENHEIGHT 200
+#define VGASCREENWIDTH 320
+#define VGASCREENHEIGHT 200
+
+#define SCREENWIDTH  72
+#define SCREENHEIGHT 40
 #if DOOM_TINY
-#define MAIN_VIEWHEIGHT (SCREENHEIGHT - 32 /* ST_HEIGHT */)
+#define MAIN_VIEWHEIGHT SCREENHEIGHT
+//(SCREENHEIGHT - 32 /* ST_HEIGHT */)
 #endif
 
 // Screen height used when aspect_ratio_correct=true.
