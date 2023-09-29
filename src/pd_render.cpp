@@ -32,10 +32,12 @@ extern "C" {
 }
 // todo compare with and without
 #define USE_XIPCPY 0
+#if PICO_FRANTIC_GREYSCALE
 #if PICO_ON_DEVICE
 #define USE_CORE1_FOR_FLATS 1
 #endif
 #define USE_CORE1_FOR_REGULAR 1
+#endif
 #ifdef PICO_SPINLOCK_ID_OS2
 #define RENDER_SPIN_LOCK PICO_SPINLOCK_ID_OS2
 #else
@@ -167,7 +169,7 @@ int pd_frame;
 int pd_flag;
 fixed_t pd_scale;
 
-extern uint8_t __aligned(4) frame_buffer[2][SCREENWIDTH * MAIN_VIEWHEIGHT];
+extern uint8_t __aligned(4) frame_buffer[2][VGASCREENWIDTH*VGASCREENHEIGHT  /*SCREENWIDTH * MAIN_VIEWHEIGHT*/];
 static uint8_t __aligned(4) visplane_bit[(SCREENWIDTH / 8) * MAIN_VIEWHEIGHT]; // this is also used for patch decoding in core1 (since flats are done by then)
 static int8_t flatnum_first[256];
 
@@ -2959,6 +2961,7 @@ void pd_end_frame(int wipe_start) {
 #if 0 && !PICO_ON_DEVICE
     printf("GS %d vt %d fi %d\n", gamestate, next_video_type, next_frame_index);
 #endif
+
     sem_release(&render_frame_ready);
     DEBUG_PINS_CLR(start_end, 2);
 }

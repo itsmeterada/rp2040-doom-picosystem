@@ -19,6 +19,7 @@
 
 #if PICODOOM_RENDER_NEWHOPE
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <limits.h>
 #include <doom/r_data.h>
@@ -128,7 +129,7 @@ unsigned int joywait = 0;
 
 pixel_t *I_VideoBuffer; // todo can't have this
 
-uint8_t __aligned(4) frame_buffer[2][SCREENWIDTH*MAIN_VIEWHEIGHT];
+uint8_t __aligned(4) frame_buffer[2][VGASCREENWIDTH*VGASCREENHEIGHT  /*SCREENWIDTH * MAIN_VIEWHEIGHT*/];
 static uint16_t palette[256];
 static uint16_t __scratch_x("shared_pal") shared_pal[NUM_SHARED_PALETTES][16];
 static int8_t next_pal=-1;
@@ -562,7 +563,14 @@ static void __scratch_x("scanlines") scanline_func_double(uint32_t *dest, int sc
 //        }
         palette_convert_scanline(dest, src);
     } else {
+#if (SCREENHEIGHT) == (MAIN_VIEWHEIGHT)
+        //just for host build
+        for (int i = 0; i < SCREENWIDTH; i += 2) {
+            *dest++ = 0;
+        }
+#else
         // we expect everything to be overdrawn by statusbar so we do nothing
+#endif
     }
 }
 
@@ -624,7 +632,7 @@ static void scanline_func_wipe(uint32_t *dest, int scanline) {
 
 static inline uint draw_vpatch(uint16_t *dest, patch_t *patch, vpatchlist_t *vp, uint off) {
     int repeat = vp->entry.repeat;
-    dest += vp->entry.x;
+    dest += DECIMATE_X(vp->entry.x);
     int w = vpatch_width(patch);
     const uint8_t *data0 = vpatch_data(patch);
     const uint8_t *data = data0 + off;
@@ -717,18 +725,36 @@ static inline uint draw_vpatch(uint16_t *dest, patch_t *patch, vpatchlist_t *vp,
                 break;
             }
             case vp8_runs: {
-                uint16_t *p = dest;
-                uint16_t *pend = dest + w;
+                int p = 0;
                 uint8_t gap;
                 while (0xff != (gap = *data++)) {
                     p += gap;
                     int len = *data++;
                     for (int i = 0; i < len; i++) {
-                        *p++ = palette[pal[*data++]];
+#if LOWRES_DECIMATE
+                        if ((p & LOWRES_DECIMATE) == 0)
+#endif
+                            dest[DECIMATE_SCALE(p)] = palette[pal[*data]];
+                        ++data;
+                        ++p;
                     }
-                    assert(p <= pend);
-                    if (p == pend) break;
+                    assert(p <= w);
+                    if (p == w) break;
                 }
+
+#if LOWRES_DECIMATE
+                p = 0;
+                while (0xff != (gap = *data++)) {
+                    p += gap;
+                    int len = *data++;
+                    data += len;
+                    p += len;
+                    assert(p <= w);
+                    if (p == w) break;
+                }
+#endif
+
+
                 break;
             }
             case vp_border: {
@@ -874,6 +900,9 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                     int r = *doompalette++;
                     int g = *doompalette++;
                     int b = *doompalette++;
+
+r = g = b = ((r*5 + g*3 + b*2) / 8);
+
                     if (usegamma) {
                         r = gammatable[usegamma-1][r];
                         g = gammatable[usegamma-1][g];
@@ -898,6 +927,7 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                     int r = *doompalette++;
                     int g = *doompalette++;
                     int b = *doompalette++;
+r = g = b = ((r*5 + g*3 + b*2) / 8);
                     r += ((r0 - r) * mul) >> 16;
                     g += ((g0 - g) * mul) >> 16;
                     b += ((b0 - b) * mul) >> 16;
@@ -1014,7 +1044,7 @@ void __scratch_x("scanlines") fill_scanlines() {
                 for (int vp = vpatchlists->vpatch_next[prev]; vp; vp = vpatchlists->vpatch_next[prev]) {
                     patch_t *patch = resolve_vpatch_handle(overlays[vp].entry.patch_handle);
                     int yoff = scanline - overlays[vp].entry.y;
-                    if (yoff < vpatch_height(patch)) {
+                    if (yoff < DECIMATE_SCALE(vpatch_height(patch))) {
                         vpatchlists->vpatch_doff[vp] = draw_vpatch((uint16_t*)(buffer->data + 1), patch, &overlays[vp],
                                                                    vpatchlists->vpatch_doff[vp]);
                         prev = vp;

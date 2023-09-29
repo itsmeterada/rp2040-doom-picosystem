@@ -63,13 +63,19 @@ extern int		loopcount;
 
 // Lighting constants.
 // Now why not 32 levels here?
-#define LIGHTLEVELS	        16
-#define LIGHTSEGSHIFT	         4
+#define LIGHTLEVELS        16
+#define LIGHTSEGSHIFT       4
 
-#define MAXLIGHTSCALE		48
-#define LIGHTSCALESHIFT		12
-#define MAXLIGHTZ	       128
-#define LIGHTZSHIFT		20
+#define MAXLIGHTSCALE      48
+#define MAXLIGHTZ         128
+
+#if DOOM_LOWRES
+#define LIGHTSCALESHIFT     8
+#define LIGHTZSHIFT        16
+#else
+#define LIGHTSCALESHIFT    12
+#define LIGHTZSHIFT        20
+#endif
 
 // todo graham could be const
 #if !USE_LIGHTMAP_INDEXES

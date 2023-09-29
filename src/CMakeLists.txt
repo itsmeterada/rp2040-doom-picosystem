@@ -510,14 +510,17 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
         USE_DIRECT_MIDI_LUMP=1
 
         NO_USE_NET=1 # standard networking
-        USE_PICO_NET=1
+        #USE_PICO_NET=1
         # for vgaboard
         PICO_DEFAULT_I2C=1
         PICO_DEFAULT_I2C_SDA_PIN=18
         PICO_DEFAULT_I2C_SCL_PIN=19
 
-        #NO_USE_LOAD=1
-        #NO_USE_SAVE=1
+        PICO_FRANTIC_GREYSCALE=1
+        DOOM_LOWRES=1
+
+        NO_USE_LOAD=1
+        NO_USE_SAVE=1
         $<$<BOOL:${PICO_ON_DEVICE}>:NO_FILE_ACCESS=1>
 
         SAVE_COMPRESSED=1

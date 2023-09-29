@@ -164,7 +164,6 @@ void V_SetPatchClipCallback(vpatchclipfunc_t func)
 //
 
 #if USE_WHD
-
 void V_BeginPatchList(vpatchlist_t *patchlist) {
     vpatchlist = patchlist;
     vpatchlist->header.size = 1;
@@ -189,8 +188,9 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
             shared_palette8[i] = vpatch_palette(patch);
         }
     }
+
     for (int l = 1; l < patchlist[0].header.size; l++) {
-        uint8_t *orig = dest_screen + (patchlist[l].entry.y) * SCREENWIDTH + patchlist[l].entry.x;
+        uint8_t *orig = dest_screen + DECIMATE_Y(patchlist[l].entry.y) * SCREENWIDTH + DECIMATE_X(patchlist[l].entry.x);
         const patch_t *patch = resolve_vpatch_handle(patchlist[l].entry.patch_handle);
         const uint8_t *pal;
         if (!vpatch_has_shared_palette(patch)) {
@@ -207,9 +207,9 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
         int skip_top;
 #pragma GCC diagnostic pop
         int type = vpatch_type(patch);
-        if (patchlist[l].entry.y + h0 > vpatch_clip_bottom) {
+        if (patchlist[l].entry.y + h0 > DECIMATE_ISCALE(vpatch_clip_bottom)) {
             // clipping bottom which is trivial
-            h0 = vpatch_clip_bottom - patchlist[l].entry.y;
+            h0 = DECIMATE_ISCALE(vpatch_clip_bottom) - patchlist[l].entry.y;
             if (h0 <= 0) continue;
         }
         if (patchlist[l].entry.y < vpatch_clip_top) {
@@ -223,7 +223,7 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
         int h = h0;
         switch (type) {
             case vp4_runs_clipped:
-                for(;skip_top--; desttop += SCREENWIDTH) {
+                for(;skip_top--;) {
                     uint8_t gap;
                     int p = 0;
                     while (0xff != (gap = *data++)) {
@@ -240,70 +240,96 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
                         assert(p <= w);
                         if (p == w) break;
                     }
+                    if (DECIMATE_SAMPLE(skip_top))
+                        desttop += SCREENWIDTH;
                 }
                 // fall thru
             case vp4_runs:
-                for (; h > 0; h--, desttop += SCREENWIDTH) {
-                    uint8_t *p = desttop;
-                    uint8_t *pend = desttop + w;
+                for (; h > 0; h--) {
+                    int p = 0;
                     uint8_t gap;
                     while (0xff != (gap = *data++)) {
                         p += gap;
                         int len = *data++;
-                        for (int i = 1; i < len; i += 2) {
+                        for (int i = 1; i < len; i+=2) {
                             uint v = *data++;
-                            *p++ = pal[v & 0xf];
-                            *p++ = pal[v >> 4];
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                            ++p;
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[v >> 4];
+                            ++p;
                         }
                         if (len & 1) {
-                            *p++ = pal[(*data++) & 0xf];
+                            uint v = *data++;
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                            ++p;
                         }
-                        assert(p <= pend);
-                        if (p == pend) break;
+                        assert(p <= w);
+                        if (p == w) break;
                     }
+
+                    if (DECIMATE_SAMPLE(h))
+                        desttop += SCREENWIDTH;
                 }
+
                 break;
             case vp4_alpha_clipped:
                 data += ((w + 1) / 2) * skip_top;
-                desttop += SCREENWIDTH * skip_top;
+                desttop += SCREENWIDTH * DECIMATE_SCALE(skip_top);
                 // fallthru
             case vp4_alpha:
                 for (; h > 0; h--, desttop += SCREENWIDTH) {
-                    uint8_t *p = desttop;
+                    int p = 0;
                     for (int i = 0; i < w / 2; i++) {
                         uint v = *data++;
-                        if (v & 0xf) p[0] = pal[v & 0xf];
-                        if (v >> 4) p[1] = pal[v >> 4];
-                        p += 2;
+                        if (DECIMATE_SAMPLE(p) && (v & 0x0f))
+                            desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                        ++p;
+                        if (DECIMATE_SAMPLE(p) && (v >> 4))
+                            desttop[DECIMATE_SCALE(p)] = pal[v >> 4];
+                        ++p;
                     }
                     if (w & 1) {
                         uint v = *data++;
-                        if (v & 0xf) p[0] = pal[v & 0xf];
+                        if (DECIMATE_SAMPLE(p) && (v & 0x0f))
+                            desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                        ++p;
                     }
+                    if (DECIMATE_SAMPLE(h))
+                        desttop += SCREENWIDTH;
                 }
                 break;
             case vp4_solid:
                 for (; h > 0; h--, desttop += SCREENWIDTH) {
-                    uint8_t *p = desttop;
+                    int p = 0;
                     for (int i = 0; i < w / 2; i++) {
                         uint v = *data++;
-                        p[0] = pal[v & 0xf];
-                        p[1] = pal[v >> 4];
-                        p += 2;
+                        if (DECIMATE_SAMPLE(p))
+                            desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                        ++p;
+                        if (DECIMATE_SAMPLE(p))
+                            desttop[DECIMATE_SCALE(p)] = pal[v >> 4];
+                        ++p;
                     }
                     if (w & 1) {
                         uint v = *data++;
-                        p[0] = pal[v & 0xf];
+                        if (DECIMATE_SAMPLE(p))
+                            desttop[DECIMATE_SCALE(p)] = pal[v & 0x0f];
+                        ++p;
                     }
+                    if (DECIMATE_SAMPLE(h))
+                        desttop += SCREENWIDTH;
                 }
+
                 break;
             case vp6_runs_clipped:
                 // todo implement this (perhaps needed for multi player?)
                 continue;
             case vp6_runs:
-                for (; h > 0; h--, desttop += SCREENWIDTH) {
-                    uint8_t *p = desttop;
-                    uint8_t *pend = desttop + w;
+                for (; h > 0; h--) {
+                    int p = 0;
                     uint8_t gap;
                     while (0xff != (gap = *data++)) {
                         p += gap;
@@ -312,46 +338,77 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
                             uint v = *data++;
                             v |= (*data++) << 8;
                             v |= (*data++) << 16;
-                            *p++ = pal[v & 0x3f];
-                            *p++ = pal[(v >> 6) & 0x3f];
-                            *p++ = pal[(v >> 12) & 0x3f];
-                            *p++ = pal[(v >> 18) & 0x3f];
+                            
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[v & 0x3f];
+                            ++p;
+
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[(v >> 6) & 0x3f];
+                            ++p;
+
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[(v >> 12) & 0x3f];
+                            ++p;
+
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[(v >> 18) & 0x3f];
+                            ++p;
                         }
                         len &= 3;
                         if (len--) {
                             uint v = *data++;
-                            *p++ = pal[v & 0x3f];
+                            
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[v & 0x3f];
+                            ++p;
+
                             if (len--) {
                                 v >>= 6;
                                 v |= (*data++) << 2;
-                                *p++ = pal[v & 0x3f];
+
+                                if (DECIMATE_SAMPLE(p))
+                                    desttop[DECIMATE_SCALE(p)] = pal[v & 0x3f];
+                                ++p;
+
                                 if (len--) {
                                     v >>= 6;
                                     v |= (*data++) << 4;
-                                    *p++ = pal[v & 0x3f];
+
+                                    if (DECIMATE_SAMPLE(p))
+                                        desttop[DECIMATE_SCALE(p)] = pal[v & 0x3f];
+                                    ++p;
+
                                     assert(!len);
                                 }
                             }
                         }
-                        assert(p <= pend);
-                        if (p == pend) break;
+                        assert(p <= w);
+                        if (p == w) break;
                     }
+                    if (DECIMATE_SAMPLE(h))
+                        desttop += SCREENWIDTH;
                 }
                 break;
             case vp8_runs:
-                for (; h > 0; h--, desttop += SCREENWIDTH) {
-                    uint8_t *p = desttop;
-                    uint8_t *pend = desttop + w;
+                for (; h > 0; h--) {
+                    int p = 0;
                     uint8_t gap;
                     while (0xff != (gap = *data++)) {
                         p += gap;
                         int len = *data++;
                         for (int i = 0; i < len; i++) {
-                            *p++ = pal[*data++];
+                            if (DECIMATE_SAMPLE(p))
+                                desttop[DECIMATE_SCALE(p)] = pal[*data];
+                            ++p;
+                            ++data;
                         }
-                        assert(p <= pend);
-                        if (p == pend) break;
+                        assert(p <= w);
+                        if (p == w) break;
                     }
+
+                    if (DECIMATE_SAMPLE(h))
+                        desttop += SCREENWIDTH;
                 }
                 break;
             case vp_border_clipped:
@@ -420,11 +477,13 @@ void V_DrawPatchN(int x, int y, vpatch_handle_large_t patch_handle, int repeat) 
     }
 #endif
 
-#ifdef RANGECHECK
+#if defined RANGECHECK && !LOWRES_DECIMATE
     if (x < 0
         || x + vpatch_width(patch) > SCREENWIDTH
         || y < 0
         || y + vpatch_height(patch) > SCREENHEIGHT) {
+//printf("Bad V_DrawPatch (%d,%d - %d,%d) \n", x, y, x+vpatch_width(patch), y+vpatch_height(patch));
+//return;
         I_Error("Bad V_DrawPatch");
     }
 #endif

@@ -8,6 +8,8 @@
 #include <string.h>
 #include "piconet.h"
 
+#if USE_PICO_NET
+
 boolean net_client_connected;
 
 #if PICO_ON_DEVICE
@@ -932,5 +934,7 @@ int piconet_get_lobby_state(lobby_state_t *ls) {
     ls->status = lobby_no_connection;
     return -1;
 }
+
+#endif
 
 #endif

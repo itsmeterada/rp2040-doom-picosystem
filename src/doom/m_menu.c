@@ -279,31 +279,39 @@ static int  M_StringHeight(const char *string);
 enum
 {
     newgame = 0,
+#if !DOOM_LOWRES
     options,
+#endif
 #if !NO_USE_LOAD
     loadgame,
 #endif
 #if !NO_USE_SAVE
     savegame,
 #endif
+#if !DOOM_LOWRES
     readthis,
     quitdoom,
+#endif
     main_end
 } main_e;
 
 static menuitem_t MainMenu[]=
 {
     {1,VPATCH_NAME(M_NGAME),'n', M_NewGame},
+#if !DOOM_LOWRES
     {1,VPATCH_NAME(M_OPTION), 'o', M_Options},
+#endif
 #if !NO_USE_LOAD
     {1,VPATCH_NAME(M_LOADG), 'l', M_LoadGame},
 #endif
 #if !NO_USE_SAVE
     {1,VPATCH_NAME(M_SAVEG), 's', M_SaveGame},
 #endif
+#if !DOOM_LOWRES
     // Another hickup with Special edition.
     {1,VPATCH_NAME(M_RDTHIS), 'r', M_ReadThis},
     {1,VPATCH_NAME(M_QUITG),'q',M_QuitDOOM}
+#endif
 };
 
 menu_t  MainDef =
@@ -1113,15 +1121,20 @@ void M_NewGame(int choice)
     }
 
     // Chex Quest disabled the episode select screen, as did Doom II.
+    bool episelect = (gamemode != commercial && !gameversion_is_chex(gameversion));
+#if DOOM_LOWRES
+    episelect &= (gamemode != shareware);
+#endif
 
 #if NET_MENU
     EpiDef.prevMenu = &MainDef;
     netgame_choice = -1;
 #endif
-    if (gamemode == commercial || gameversion_is_chex(gameversion))
-	M_SetupNextMenu(&NewDef);
+
+    if (episelect)
+	    M_SetupNextMenu(&EpiDef);
     else
-	M_SetupNextMenu(&EpiDef);
+	    M_SetupNextMenu(&NewDef);
 }
 
 
@@ -1204,14 +1217,17 @@ void M_DrawOptions(void)
 		      W_CacheLumpName(DEH_String(detailNames[detailLevel]),
 			              PU_CACHE));
 #else
+#if USE_PICO_NET
     // "Game" for Network
     V_DrawPatchDirect(OptionsDef.x + 105, OptionsDef.y + LINEHEIGHT * networkgame,
                       VPATCH_HANDLE(VPATCH_NAME(M_GAME)));
-
 #endif
 
+#endif
+#if !DOOM_LOWRES
     V_DrawPatchDirect(OptionsDef.x + 120, OptionsDef.y + LINEHEIGHT * messages,
                       VPATCH_HANDLE(msgNames[showMessages]));
+#endif
 
 #if !NO_USE_MOUSE
     M_DrawThermo(OptionsDef.x, OptionsDef.y + LINEHEIGHT * (mousesens + 1),
@@ -2390,7 +2406,6 @@ static void M_DrawOPLDev(void)
 //
 void M_Drawer (void)
 {
-return;
 #if !NO_DRAW_MENU
     static short	x;
     static short	y;
@@ -2590,6 +2605,7 @@ void M_Init (void)
 
     // The same hacks were used in the original Doom EXEs.
 
+#if !DOOM_LOWRES
     if (gameversion >= exe_ultimate)
     {
         MainMenu[readthis].routine = M_ReadThis2;
@@ -2612,7 +2628,7 @@ void M_Init (void)
         ReadDef1.y = 165;
         ReadMenu1[rdthsempty1].routine = M_FinishReadThis;
     }
-
+#endif
     // Versions of doom.exe before the Ultimate Doom release only had
     // three episodes; if we're emulating one of those then don't try
     // to show episode four. If we are, then do show episode four
