@@ -129,7 +129,7 @@ unsigned int joywait = 0;
 
 pixel_t *I_VideoBuffer; // todo can't have this
 
-uint8_t __aligned(4) frame_buffer[2][VGASCREENWIDTH*VGASCREENHEIGHT  /*SCREENWIDTH * MAIN_VIEWHEIGHT*/];
+uint8_t __aligned(4) frame_buffer[2][SCREENWIDTH * SCREENHEIGHT];
 static uint16_t palette[256];
 static uint16_t __scratch_x("shared_pal") shared_pal[NUM_SHARED_PALETTES][16];
 static int8_t next_pal=-1;
@@ -556,31 +556,22 @@ static void __noinline render_text_mode_scanline(scanvideo_scanline_buffer_t *bu
 #endif
 
 static void __scratch_x("scanlines") scanline_func_double(uint32_t *dest, int scanline) {
-    if (scanline < MAIN_VIEWHEIGHT) {
+    if (scanline < SCREENHEIGHT) {
         const uint8_t *src = frame_buffer[display_frame_index] + scanline * SCREENWIDTH;
 //        if (scanline == 100) {
 //            printf("SL %d %p\n", display_frame_index, &frame_buffer[display_frame_index]);
 //        }
         palette_convert_scanline(dest, src);
     } else {
-#if (SCREENHEIGHT) == (MAIN_VIEWHEIGHT)
-        //just for host build
         for (int i = 0; i < SCREENWIDTH; i += 2) {
             *dest++ = 0;
         }
-#else
-        // we expect everything to be overdrawn by statusbar so we do nothing
-#endif
     }
 }
 
 static void __not_in_flash_func(scanline_func_single)(uint32_t *dest, int scanline) {
     uint8_t *src;
-    if (scanline < MAIN_VIEWHEIGHT) {
-        src = frame_buffer[display_frame_index] + scanline * SCREENWIDTH;
-    } else {
-        src = frame_buffer[display_frame_index^1] + (scanline - 32) * SCREENWIDTH;
-    }
+    src = frame_buffer[display_frame_index] + scanline * SCREENWIDTH;
 #if !DEMO1_ONLY
     if (video_scroll) {
         for(int i=SCREENWIDTH-1;i>0;i--) {
@@ -603,11 +594,7 @@ static void scanline_func_wipe(uint32_t *dest, int scanline) {
     palette_convert_scanline(dest, src);
     return;
 #endif
-    if (scanline < MAIN_VIEWHEIGHT) {
-        src = frame_buffer[display_frame_index];
-    } else {
-        src = frame_buffer[display_frame_index^1] - 32 * SCREENWIDTH;
-    }
+    src = frame_buffer[display_frame_index];
     assert(wipe_yoffsets && wipe_linelookup);
     uint16_t *d = (uint16_t *)dest;
     src += scanline * SCREENWIDTH;
@@ -623,13 +610,14 @@ static void scanline_func_wipe(uint32_t *dest, int scanline) {
             flip = &frame_buffer[0][0] + wipe_linelookup[rel];
 #endif
             // todo better protection here
-            if (flip >= &frame_buffer[0][0] && flip < &frame_buffer[0][0] + 2 * SCREENWIDTH * MAIN_VIEWHEIGHT) {
+            if (flip >= &frame_buffer[0][0] && flip < &frame_buffer[0][0] + 2 * SCREENWIDTH * SCREENHEIGHT) {
                 d[i] = palette[flip[i]];
             }
         }
     }
 }
 
+/*
 static inline uint draw_vpatch(uint16_t *dest, patch_t *patch, vpatchlist_t *vp, uint off) {
     int repeat = vp->entry.repeat;
     dest += DECIMATE_X(vp->entry.x);
@@ -871,6 +859,9 @@ static inline uint draw_vpatch(uint16_t *dest, patch_t *patch, vpatchlist_t *vp,
     }
     return data - data0;
 }
+*/
+
+static inline int min(int a, int b) {return MIN(a, b);}
 
 // this is not in flash as quite large and only once per frame
 void __noinline new_frame_init_overlays_palette_and_wipe() {
@@ -901,7 +892,7 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                     int g = *doompalette++;
                     int b = *doompalette++;
 
-r = g = b = ((r*5 + g*3 + b*2) / 8);
+r = g = b = min(255, (r*5 + g*3 + b*2) / 8);
 
                     if (usegamma) {
                         r = gammatable[usegamma-1][r];
@@ -927,7 +918,7 @@ r = g = b = ((r*5 + g*3 + b*2) / 8);
                     int r = *doompalette++;
                     int g = *doompalette++;
                     int b = *doompalette++;
-r = g = b = ((r*5 + g*3 + b*2) / 8);
+r = g = b = min(255, (r*5 + g*3 + b*2) / 8);
                     r += ((r0 - r) * mul) >> 16;
                     g += ((g0 - g) * mul) >> 16;
                     b += ((b0 - b) * mul) >> 16;
@@ -1039,6 +1030,8 @@ void __scratch_x("scanlines") fill_scanlines() {
                     prev = vp;
                     vp = next;
                 }
+
+/*
                 vpatchlist_t *overlays = vpatchlists->overlays[display_overlay_index];
                 prev = 0;
                 for (int vp = vpatchlists->vpatch_next[prev]; vp; vp = vpatchlists->vpatch_next[prev]) {
@@ -1052,6 +1045,7 @@ void __scratch_x("scanlines") fill_scanlines() {
                         vpatchlists->vpatch_next[prev] = vpatchlists->vpatch_next[vp];
                     }
                 }
+*/
             }
             uint16_t *p = (uint16_t *) buffer->data;
             p[0] = video_doom_offset_raw_run;

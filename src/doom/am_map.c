@@ -876,9 +876,6 @@ void AM_Ticker (void)
 //
 void AM_clearFB(int color)
 {
-#if PICODOOM_RENDER_NEWHOPE
-    assert(f_h <= MAIN_VIEWHEIGHT);
-#endif
     memset(fb, color, f_w*f_h*sizeof(*fb));
 }
 

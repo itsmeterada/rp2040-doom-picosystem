@@ -772,14 +772,12 @@ void ST_drawWidgets(boolean refresh)
     st_fragson = deathmatch && st_statusbaron;
 
 #if DOOM_TINY
-    if ((MAIN_VIEWHEIGHT) < (SCREENHEIGHT)) {
-        V_DrawPatch(0, ST_FACESY, sbar);
+    V_DrawPatch(0, ST_FACESY, sbar);
 #if USE_PICO_NET
-        static vpatch_handle_small_t fb;
-        if (refresh) fb = netgame ? VPATCH_NAME(STFB0) + consoleplayer : 0;
-        if (fb) V_DrawPatch(ST_FX, ST_FACESY, fb);
+    static vpatch_handle_small_t fb;
+    if (refresh) fb = netgame ? VPATCH_NAME(STFB0) + consoleplayer : 0;
+    if (fb) V_DrawPatch(ST_FX, ST_FACESY, fb);
 #endif
-    }
 #endif
     STlib_updateNum(&w_ready, refresh);
 

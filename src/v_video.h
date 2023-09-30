@@ -84,7 +84,6 @@ extern pre_wipe_state_t pre_wipe_state;
 void V_BeginPatchList(vpatchlist_t *patchlist);
 void V_EndPatchList(void);
 void V_DrawPatchList(const vpatchlist_t *patchlist);
-extern uint8_t vpatch_clip_top, vpatch_clip_bottom;
 #endif
 void V_DrawPatch(int x, int y, vpatch_handle_large_t patch);
 void V_DrawPatchN(int x, int y, vpatch_handle_large_t patch, int repeat);

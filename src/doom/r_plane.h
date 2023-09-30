@@ -40,11 +40,7 @@ extern planefunction_t	ceilingfunc_t;
 extern floor_ceiling_clip_t floorclip[SCREENWIDTH];
 extern floor_ceiling_clip_t ceilingclip[SCREENWIDTH];
 
-#if !DOOM_TINY
 extern fixed_t		yslope[SCREENHEIGHT];
-#else
-extern fixed_t		yslope[MAIN_VIEWHEIGHT];
-#endif
 #if !FIXED_SCREENWIDTH
 extern fixed_t		_distscale[SCREENWIDTH];
 #define distscale(x) _distscale[x]

@@ -28,30 +28,11 @@
 #define VGASCREENWIDTH 320
 #define VGASCREENHEIGHT 200
 
-#define SCREENWIDTH  72
+#define SCREENWIDTH 72
 #define SCREENHEIGHT 40
 static_assert(((SCREENWIDTH)&7)==0, "");
 
-#if DOOM_TINY
-#define MAIN_VIEWHEIGHT SCREENHEIGHT
-//(SCREENHEIGHT - 32 /* ST_HEIGHT */)
-#endif
-
-#define LOWRES_DECIMATE 2
-
-#if LOWRES_DECIMATE
-#define DECIMATE_SCALE(a) ((a)>>(LOWRES_DECIMATE))
-#define DECIMATE_ISCALE(a) ((a)<<(LOWRES_DECIMATE))
-#define DECIMATE_X(x) (DECIMATE_SCALE(((x)-(VGASCREENWIDTH/2)))+(SCREENWIDTH/2))
-#define DECIMATE_Y(y) (DECIMATE_SCALE(y))
-#define DECIMATE_SAMPLE(p) (((p) & ((1<<(LOWRES_DECIMATE))-1)) == 0)
-#else
-#define DECIMATE_SCALE(a) (a)
-#define DECIMATE_ISCALE(a) (a)
-#define DECIMATE_X(x) (x)
-#define DECIMATE_Y(y) (y)
-#define DECIMATE_SAMPLE(p) (true)
-#endif
+#define OVERLAY_DECIMATE 2
 
 // Screen height used when aspect_ratio_correct=true.
 

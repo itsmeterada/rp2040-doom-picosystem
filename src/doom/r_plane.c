@@ -92,11 +92,7 @@ int8_t *planezlight;
 #endif
 fixed_t planeheight;
 
-#if !DOOM_TINY
 fixed_t yslope[SCREENHEIGHT];
-#else
-fixed_t yslope[MAIN_VIEWHEIGHT];
-#endif
 #if !FIXED_SCREENWIDTH
 fixed_t _distscale[SCREENWIDTH];
 #else
