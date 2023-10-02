@@ -1,5 +1,58 @@
 # RP2040 Doom
 
+
+This is a fork of RP2040 Doom targeting the Thumby. It switches the display between different contrast levels fast enough to generate
+ pretty reasonable greyscale. Sound is currently unsupported. It doesn't overclock the device like the VGA version.
+
+Most of the details are in the original readme below. Briefly:
+
+install pico-sdk, pico-extras & their requisites. You'll also need picotool to install the Doom wad.
+
+```bash
+mkdir thumby-build
+cd thumby-build
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_BOARD=jthumby -DPICO_SDK_PATH=/path/to/pico-sdk -DPICO_EXTRAS_PATH=/path/to/pico-extras ..
+```
+
+Then `make` to make `doom_tiny.uf2`.
+
+To install it on the Thumby, you'll need to boot into BOOTSEL mode. Turn it off, then hold the down button on the dpad while turning it
+on. It should pop up as a flash drive on your computer.
+
+Copy `doom_tiny.uf2` to that flash drive. (This will delete everything on your Thumby! If you ever want to not play Doom on it, you'll
+have to follow the same process to reinstall its original firmware, and download all your games again.)
+
+Finally, you need to install the Doom data on it. Boot the Thumby into BOOTSEL mode again, and run
+
+```bash
+picotool load -v -t bin doom1.whx -o 0x10040000.
+```
+
+Turn it off, unplug the USB cable, and turn it on again. Doom should happen.
+
+[![Doom on a Thumby](https://img.youtube.com/vi/k7ztqNAVVsY/sddefault.jpg)](https://youtu.be/k7ztqNAVVsY)
+
+
+
+You can build a version that simulates the 72x40 glory on your PC.
+
+```bash
+./cup.sh <whd/whx_file>
+mkdir host-build
+cd host-build
+cmake -DPICO_PLATFORM=host -DPICO_SDK_PATH=/path/to/pico-sdk -DPICO_EXTRAS_PATH=/path/to/pico-extras -DPICO_SDK_PRE_LIST_DIRS=/path/to/pico_host_sdl ..
+make
+```
+
+![A screenshot of low res Doom in a window](images/t_host.png)
+
+
+#
+#
+
+# Original README:
+
+
 This is a port of Doom for RP2040 devices, derived from [Chocolate Doom](https://github.com/chocolate-doom/chocolate-doom).
 
 Significant changes have been made to support running on the RP2040 device, but particularly to support running the 

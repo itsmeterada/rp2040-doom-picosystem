@@ -516,6 +516,7 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
         PICO_DEFAULT_I2C_SDA_PIN=18
         PICO_DEFAULT_I2C_SCL_PIN=19
 
+        PICO_SCANVIDEO_SCALING_NEAREST=1
         PICO_FRANTIC_GREYSCALE=1
         DOOM_LOWRES=1
 
@@ -584,7 +585,7 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
         target_compile_options(doom_tiny${SUFFIX} PRIVATE -g)
     endif()
     target_link_libraries(doom_tiny${SUFFIX} PRIVATE ${RENDER_LIB})
-    set(PICO_HACK 0)
+    set(PICO_HACK 1)
     set(STAMP_HACK 0)
     if (PICO_HACK)
         target_compile_definitions(doom_tiny${SUFFIX} PRIVATE

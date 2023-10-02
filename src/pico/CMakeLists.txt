@@ -22,7 +22,9 @@ if (PICO_ON_DEVICE)
             PICO_HEAP_SIZE=0
             USE_ZONE_FOR_MALLOC=1
     )
-    target_link_libraries(common_pico INTERFACE  hardware_i2c)
+    target_link_libraries(common_pico INTERFACE  hardware_i2c hardware_spi)
+
+    #pico_generate_pio_header(common_pico ${CMAKE_CURRENT_LIST_DIR}/capsense.pio)
 endif()
 target_include_directories(common_pico INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}
@@ -37,7 +39,7 @@ target_compile_definitions(common_pico INTERFACE
         )
 
 pico_generate_pio_header(common_pico ${CMAKE_CURRENT_LIST_DIR}/video_doom.pio)
-target_link_libraries(common_pico INTERFACE pico_stdlib pico_multicore pico_scanvideo_dpi)
+target_link_libraries(common_pico INTERFACE pico_stdlib pico_multicore)
 
 add_library(pico_cd INTERFACE)
 if (TARGET tinyusb_host)

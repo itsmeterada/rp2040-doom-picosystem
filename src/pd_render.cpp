@@ -32,12 +32,16 @@ extern "C" {
 }
 // todo compare with and without
 #define USE_XIPCPY 0
-#if PICO_FRANTIC_GREYSCALE
+
+#if !PICO_FRANTIC_GREYSCALE
 #if PICO_ON_DEVICE
 #define USE_CORE1_FOR_FLATS 1
 #endif
 #define USE_CORE1_FOR_REGULAR 1
+#define MULTICORE_RENDERING 1
 #endif
+
+
 #ifdef PICO_SPINLOCK_ID_OS2
 #define RENDER_SPIN_LOCK PICO_SPINLOCK_ID_OS2
 #else
@@ -48,7 +52,9 @@ extern "C" {
 //#define DEBUG_COMPOSITE 1
 // we wake up core1 during rendering whole rendering part of game loop.. during
 // this time it can do sound updates (since the main core is clearly not)
+#if MULTICORE_RENDERING
 semaphore_t core1_wake, core0_done, core1_done;
+#endif
 
 #if USE_CORE1_FOR_FLATS
 semaphore_t core1_do_flats;
@@ -769,7 +775,9 @@ void pd_begin_frame() {
 #if 0 && !PICO_ON_DEVICE
     printf("BEGIN FRAME %d rfb %p\n", render_frame_index, render_frame_buffer);
 #endif
+#if MULTICORE_RENDERING
     sem_release(&core1_wake);
+#endif
 
     reset_framedrawables();
 #if !PICO_ON_DEVICE
@@ -814,9 +822,11 @@ static void interp_init() {
 }
 
 void pd_init() {
+#if MULTICORE_RENDERING
     sem_init(&core1_wake, 0, 1);
     sem_init(&core0_done, 0, 1);
     sem_init(&core1_done, 0, 1);
+#endif
 #if PICO_ON_DEVICE
     static_assert(sizeof(vpatchlists_t) < 0xc00, "");
     vpatchlists = (vpatchlists_t *)(USBCTRL_DPRAM_BASE + 0x400);
@@ -2744,8 +2754,10 @@ next_video_type = VIDEO_TYPE_DOUBLE;
         draw_cast_sprite(sprite_lump);
     }
 #endif
+#if MULTICORE_RENDERING
     sem_release(&core0_done);
     sem_acquire_blocking(&core1_done);
+#endif
     draw_fuzz_columns();
     DEBUG_PINS_CLR(full_render, 1);
     NetUpdate();
@@ -2913,6 +2925,7 @@ next_video_type = VIDEO_TYPE_DOUBLE;
 }
 
 void pd_core1_loop() {
+#if MULTICORE_RENDERING
 #if PICO_ON_DEVICE
     sem_acquire_blocking(&core1_wake);
 #if USE_CORE1_FOR_FLATS
@@ -2934,6 +2947,7 @@ void pd_core1_loop() {
     }
 #endif
     sem_release(&core1_done);
+#endif
 }
 
 #if PICO_ON_DEVICE
