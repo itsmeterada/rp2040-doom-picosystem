@@ -506,6 +506,8 @@ void D_RunFrame()
         do {
             D_Display();
         } while (wipestate);
+
+        I_FinishUpdate();
 #endif
     }
 }

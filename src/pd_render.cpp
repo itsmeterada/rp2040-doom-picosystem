@@ -768,9 +768,6 @@ static void push_down_x(int x, int new_index) {
 
 void pd_begin_frame() {
     DEBUG_PINS_SET(start_end, 1);
-    if (gamestate == GS_LEVEL) {
-//        render_frame_index ^= 1;
-    }
     render_frame_buffer = nullptr;
 #if 0 && !PICO_ON_DEVICE
     printf("BEGIN FRAME %d rfb %p\n", render_frame_index, render_frame_buffer);
@@ -2591,20 +2588,17 @@ void pd_end_frame(int wipe_start) {
     reclip_fuzz_columns();
 #if PICO_ON_DEVICE
 //    gpio_put(22, 1);
-    while (!sem_available(&display_frame_freed)) {
-        I_UpdateSound();
-    }
+//    while (!sem_available(&display_frame_freed)) {
+//        I_UpdateSound();
+//    }
 //    gpio_put(22, 0);
 #endif
-    sem_acquire_blocking(&display_frame_freed);
+//    sem_acquire_blocking(&display_frame_freed);
     bool showing_help = inhelpscreens;
     static boolean was_in_help;
-    if (gamestate == GS_LEVEL) {
-        if (!wipestate && (!showing_help || !was_in_help)) render_frame_index ^= 1;
-    } else {
-        // we expect all the rendering code to be a no-op
-        assert(render_col_count == 0);
-    }
+
+    render_frame_index ^= 1;
+
     render_frame_buffer = frame_buffer[render_frame_index];
 #if 0 && !PICO_ON_DEVICE
     printf("END FRAME %d %p ws %d cols %d\n", render_frame_index, render_frame_buffer, wipe_start, render_col_count);
@@ -2761,7 +2755,6 @@ void pd_end_frame(int wipe_start) {
             }
             case GS_DEMOSCREEN: {
                 //assert(num_framedrawables == 0);
-sub_gamestate = 0;
                 if (!wipestate) {
                     int pnum = W_GetNumForName(pagename);
                     assert(pnum);
@@ -2813,7 +2806,7 @@ next_video_type = VIDEO_TYPE_DOUBLE;
     // todo this might not be right
     // advance demo is set on the last frame of a demo, pre_wipe_state is set for last frame of gameplay in other state changes (by g_game)
     // inhelpscreens has skull which is in an iconvenient place
-    bool render_menu_etc_to_fb = !advancedemo && !pre_wipe_state && /*next_video_type == VIDEO_TYPE_DOUBLE &&*/ !inhelpscreens;
+    bool render_menu_etc_to_fb = !advancedemo && !pre_wipe_state && next_video_type == VIDEO_TYPE_DOUBLE && !inhelpscreens;
     if (render_menu_etc_to_fb) {
         // render menu/hu to framebuffer (otherwise it goes to the overlay)
         V_BeginPatchList(vpatchlists->framebuffer);
@@ -2850,7 +2843,7 @@ next_video_type = VIDEO_TYPE_DOUBLE;
     printf("GS %d vt %d fi %d\n", gamestate, next_video_type, next_frame_index);
 #endif
 
-    sem_release(&render_frame_ready);
+//    sem_release(&render_frame_ready);
     DEBUG_PINS_CLR(start_end, 2);
 }
 
@@ -2887,27 +2880,27 @@ extern "C" {
 static uint8_t old_video_type;
 void pd_start_save_pause(void) {
     I_PicoSoundFade(false);
-    while (!sem_available(&display_frame_freed) || I_PicoSoundFading()) {
-        I_UpdateSound();
-    }
-    sem_acquire_blocking(&display_frame_freed);
+//    while (!sem_available(&display_frame_freed) || I_PicoSoundFading()) {
+//        I_UpdateSound();
+//    }
+//    sem_acquire_blocking(&display_frame_freed);
     old_video_type = next_video_type;
     // this should be the case
     /*if (old_video_type == VIDEO_TYPE_DOUBLE) {
         draw_stbar_on_framebuffer(render_frame_index ^ 1, false);
     }*/
     next_video_type = VIDEO_TYPE_SAVING;
-    sem_release(&render_frame_ready);
+//    sem_release(&render_frame_ready);
     // need to be sure we've picked up the change
-    while (!sem_available(&display_frame_freed)) {
-        I_UpdateSound();
-    }
-    sem_acquire_blocking(&display_frame_freed);
+//    while (!sem_available(&display_frame_freed)) {
+//        I_UpdateSound();
+//    }
+//    sem_acquire_blocking(&display_frame_freed);
 }
 
 void pd_end_save_pause(void) {
     next_video_type = old_video_type;
-    sem_release(&render_frame_ready);
+//    sem_release(&render_frame_ready);
     I_PicoSoundFade(true);
     while (I_PicoSoundFading()) {
         I_UpdateSound();

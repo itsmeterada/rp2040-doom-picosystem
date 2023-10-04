@@ -137,7 +137,7 @@ static uint8_t palette[256];
 static uint8_t __scratch_x("shared_pal") shared_pal[NUM_SHARED_PALETTES][16];
 static int8_t next_pal=-1;
 
-semaphore_t render_frame_ready, display_frame_freed;
+semaphore_t vsync;
 
 uint8_t *text_screen_data;
 static uint32_t *text_scanline_buffer_start;
@@ -200,12 +200,6 @@ void I_SetPaletteNum(int doompalette)
     next_pal = doompalette;
 }
 
-//
-// I_FinishUpdate
-//
-void I_FinishUpdate (void)
-{
-}
 
 uint8_t display_frame_index;
 uint8_t display_overlay_index;
@@ -342,27 +336,23 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
     }
 }
 
-// this method moved out of scratchx because we didn't have quite enough space for core1 stack
-void __no_inline_not_in_flash_func(new_frame_stuff)() {
-    // this part of the per frame code is in RAM as it is needed during save
-    if (sem_available(&render_frame_ready)) {
-        sem_acquire_blocking(&render_frame_ready);
-        display_video_type = next_video_type;
-        display_frame_index = next_frame_index;
-        display_overlay_index = next_overlay_index;
-#if !DEMO1_ONLY
-        video_scroll = next_video_scroll; // todo does this waste too much space
-#endif
-        sem_release(&display_frame_freed);
-    } else {
-#if !DEMO1_ONLY
-        video_scroll = NULL;
-#endif
-    }
+//
+// I_FinishUpdate
+//
+void I_FinishUpdate (void)
+{
+    sem_acquire_blocking(&vsync);
+
+    display_video_type = next_video_type;
+    display_frame_index = next_frame_index;
+    display_overlay_index = next_overlay_index;
+
     if (display_video_type != VIDEO_TYPE_SAVING) {
         // this stuff is large (so in flash) and not needed in save move
         new_frame_init_overlays_palette_and_wipe();
     }
+
+    sem_release(&vsync);
 }
 
 #pragma GCC pop_options
@@ -378,7 +368,9 @@ static void __not_in_flash_func(free_buffer_callback)() {
 }
 
 #define FRAME_PERIOD J_OLED_FRAME_PERIOD
-#define SYNC_WAIT 10
+
+// some oleds need 2 park lines, but that's not as robust
+#define PARK_LINES 1
 
 static const uint8_t command_initialise[] = {
     0xAE,           //display off
@@ -403,21 +395,21 @@ static const uint8_t command_initialise[] = {
 };
 
 static const uint8_t command_park[] = {
-    0xA8, 1,        //set 2-line multiplex
+    0xA8, PARK_LINES - 1,        //set 2-line multiplex
     0xD3, 4         //set display offset off the... bottom?
 };
 
 static uint8_t command_run[] = {
     0x81, 1,        //set level
     0xD3, 0,        //reset display offset
-    0xA8, DISPLAYHEIGHT + 12 - 1,       //multiplex + overscan
+    0xA8, DISPLAYHEIGHT + 16 - 1,       //multiplex + overscan
 };
 
 static const uint8_t contrast[3] = {
     0x7f, 0x1f, 0x07
 };
 
-uint8_t page_buffer[DISPLAYWIDTH] = {};
+uint8_t field_buffer[DISPLAYWIDTH*(DISPLAYHEIGHT/8)] = {};
 
 uint8_t byte_reverse(uint8_t b) {
    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
@@ -563,11 +555,13 @@ static void core1() {
 
         gpio_put(J_OLED_DC, 0);
         spi_write_blocking(spi0, command_park, sizeof(command_park));
+#endif
 
-        sleep_until(delayed_by_us(frame_time, SYNC_WAIT));
+        if (l == 0) {
+            sem_acquire_blocking(&vsync);
+        }
 
-        gpio_put(J_OLED_DC, 1);
-
+#if PICO_ON_DEVICE
         uint8_t level = 0x04 >> l;
 
         for (int p = 0; p < (DISPLAYHEIGHT / 8) ; ++p) {
@@ -613,18 +607,11 @@ static void core1() {
                         byte |= 0x80;
                     }
                 }
-                page_buffer[x] = byte;
+                field_buffer[p*DISPLAYWIDTH+x] = byte;
             }
-            spi_write_blocking(spi0, page_buffer, sizeof(page_buffer));
         }
         
-        gpio_put(J_OLED_DC, 0);
-
         command_run[1] = contrast[l];
-        spi_write_blocking(spi0, command_run, sizeof(command_run));
-
-        gpio_put(J_OLED_CS, 1);
-
 #else
         simulate_display(dither);
 #endif
@@ -632,10 +619,22 @@ static void core1() {
         if (++l >= 3) {
             l = 0;
             dither ^= 1;
-            new_frame_stuff();
         }
 
-//       pd_core1_loop();
+        if (l == 0) {
+            sem_release(&vsync);
+        }
+
+#if PICO_ON_DEVICE
+        gpio_put(J_OLED_DC, 1);
+        spi_write_blocking(spi0, field_buffer, sizeof(field_buffer));
+        gpio_put(J_OLED_DC, 0);
+
+        spi_write_blocking(spi0, command_run, sizeof(command_run));
+
+        gpio_put(J_OLED_CS, 1);
+#endif
+
         frame_time = delayed_by_us(frame_time, FRAME_PERIOD);
         sleep_until(frame_time);
     }
@@ -644,8 +643,7 @@ static void core1() {
 void I_InitGraphics(void)
 {
     stbar = resolve_vpatch_handle(VPATCH_STBAR);
-    sem_init(&render_frame_ready, 0, 2);
-    sem_init(&display_frame_freed, 1, 2);
+    sem_init(&vsync, 1, 1);
     pd_init();
 
     display_driver_init();

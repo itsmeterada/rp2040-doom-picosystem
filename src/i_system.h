@@ -68,7 +68,7 @@ void I_Error (const char *error, ...) NORETURN PRINTF_ATTR(1, 2);
 
 #if DOOM_TINY
 #include "pico/sem.h"
-extern semaphore_t render_frame_ready, display_frame_freed;
+//extern semaphore_t render_frame_ready, display_frame_freed;
 #endif
 
 void I_Tactile (int on, int off, int total);

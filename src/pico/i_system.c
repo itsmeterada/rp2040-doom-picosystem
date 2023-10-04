@@ -466,12 +466,12 @@ void __attribute((noreturn)) I_Quit (void)
     D_Endoom();
 #endif
     I_StopSong();
-    while (!sem_available(&display_frame_freed)) {
-        I_UpdateSound();
-    }
-    sem_acquire_blocking(&display_frame_freed);
+//    while (!sem_available(&display_frame_freed)) {
+//        I_UpdateSound();
+//    }
+//    sem_acquire_blocking(&display_frame_freed);
     next_video_type = VIDEO_TYPE_TEXT;
-    sem_release(&render_frame_ready);
+//    sem_release(&render_frame_ready);
     at_exit_screen = 1;
     I_StartTextInput(0,0,0,0);
     uint8_t buffer[80];
