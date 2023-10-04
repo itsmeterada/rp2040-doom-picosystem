@@ -2,7 +2,19 @@
 
 
 This is a fork of RP2040 Doom targeting the Thumby. It switches the display between different contrast levels fast enough to generate
- pretty reasonable greyscale. Sound is currently unsupported. It doesn't overclock the device like the VGA version.
+pretty reasonable greyscale. Sound is currently unsupported. It doesn't overclock the device like the VGA version.
+
+Different batches have slightly different displays. If you get a display that doesn't sync, or doesn't do the greyscale trick, try
+fiddling with the `FRAME_PERIOD` in `i_video.c`. The settings here work on the Thumby I have, but other devices I've encountered have
+needed a frame period of around 6400, and `PARK_LINES` of 2.
+
+## Controls
+
+D-pad moves, top button is fire. The bottom button is run, strafe and use, and in combination with d-pad down, switches weapon.
+You're not actually intending to play this, though?
+
+
+## Building
 
 Most of the details are in the original readme below. Briefly:
 
@@ -32,6 +44,8 @@ Turn it off and on again.
 
 [![Doom on a Thumby](https://img.youtube.com/vi/k7ztqNAVVsY/sddefault.jpg)](https://youtu.be/k7ztqNAVVsY)
 
+
+## Development
 
 You can build a version that simulates the 72x40 glory on your PC.
 
