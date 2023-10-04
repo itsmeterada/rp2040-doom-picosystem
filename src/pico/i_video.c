@@ -62,12 +62,21 @@
 #include "pico/scanvideo/composable_scanline.h"
 #endif
 
+int debugline = 39;
+
 #if PICO_ON_DEVICE
 #define DISPLAYWIDTH 72
 #define DISPLAYHEIGHT 40
 #else
+
+#if FSAA
+#define DISPLAYWIDTH (SCREENWIDTH>>FSAA)
+#define DISPLAYHEIGHT (SCREENHEIGHT>>FSAA)
+#else
 #define DISPLAYWIDTH SCREENWIDTH
 #define DISPLAYHEIGHT SCREENHEIGHT
+#endif
+
 #endif
 
 #define YELLOW_SUBMARINE 0
@@ -129,7 +138,6 @@ static uint8_t __scratch_x("shared_pal") shared_pal[NUM_SHARED_PALETTES][16];
 static int8_t next_pal=-1;
 
 semaphore_t render_frame_ready, display_frame_freed;
-semaphore_t core1_launch;
 
 uint8_t *text_screen_data;
 static uint32_t *text_scanline_buffer_start;
@@ -223,9 +231,9 @@ volatile uint8_t wipe_min;
 
 
 static inline uint8_t crapify_rgb(uint8_t r, uint8_t g, uint8_t b) {
-    uint lum = (r*4 + g*3 + b*2) / 128;
-    if (lum > 14) {
-        lum = 14;
+    uint lum = (r*5 + g*3 + b*3) / 8;
+    if (lum > 255) {
+        lum = 255;
     }
     return lum;
 }
@@ -304,7 +312,7 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
             }
         }
         if (display_video_type == VIDEO_TYPE_WIPE) {
-//            printf("WIPEMIN %d\n", wipe_min);
+            printf("WIPEMIN %d\n", wipe_min);
             if (wipe_min <= 200) {
                 bool regular = display_overlay_index; // just happens to toggle every frame
                 int new_wipe_min = 200;
@@ -477,6 +485,8 @@ static const scanvideo_mode_t bogus_mode = {
     .yscale = 1,
 };
 
+#define FRAME_PERIOD 5556
+
 extern SDL_Window *window;
 static void display_driver_init() {
 
@@ -501,11 +511,31 @@ static void simulate_display(uint dither) {
             dither ^= 1;
             for (int x = 0; x < w; ++x) {
                 dither ^= 1;
-                uint pix = frame_buffer[display_frame_index][y * SCREENWIDTH + x];
-                uint lum = palette[pix];
 
-                lum = (lum >> 1) + (dither & lum);
+#if FSAA
+                uint8_t *pframe = &frame_buffer[display_frame_index][y*(SCREENWIDTH<<FSAA) + (x<<FSAA)];
+                uint lum = 0;
+                for (int aay=0; aay<(1<<FSAA); ++aay) {
+                    for (int aax=0; aax<(1<<FSAA); ++aax) {
+                        lum += palette[pframe[aay*SCREENWIDTH + aax]];
+                    }
+                }
+                lum >>= (FSAA*2);
+                pframe += (1<<FSAA);
+#else
+                uint8_t *pframe = &frame_buffer[display_frame_index][y*SCREENWIDTH + x];
+                uint lum = palette[*pframe];
+#endif
 
+                lum = (lum >> 5) + ((lum >> 4) & dither);
+                lum = MIN(lum, 7);
+
+#if DEBUGLINE
+                if (x < 6)
+                    lum = (-(((y>>(5-x))&1)==0))&7;
+                if (y == debugline)
+                    lum = 7;
+#endif
                 lum *= 36;
                 row[x] = PICO_SCANVIDEO_PIXEL_FROM_RGB8(lum, lum, lum);
             }
@@ -516,16 +546,14 @@ static void simulate_display(uint dither) {
     SDL_Delay(1);
 }
 
+
 #endif
 
-#define TESTCARD_BAR 1
+//#define TESTCARD_BAR 1
 
 static void core1() {
-    sem_release(&core1_launch);
-
     absolute_time_t frame_time = get_absolute_time();
 
- 
     uint l = 0;
     uint dither = 0;
 
@@ -549,14 +577,36 @@ static void core1() {
                 for (int b = 0; b < 8; ++b) {
                     dither ^= 1;
 
-                    uint8_t pix = frame_buffer[display_frame_index][(DISPLAYHEIGHT-1 - (p*8 + b)) * SCREENWIDTH + x];
-                    uint8_t lum = palette[pix];
-    
+                    int y = (DISPLAYHEIGHT-1)-(p*8+b);
+#if FSAA
+                    uint8_t *pframe = &frame_buffer[display_frame_index][y*(SCREENWIDTH<<FSAA) + (x<<FSAA)];
+                    uint lum = 0;
+                    for (int aay=0; aay<(1<<FSAA); ++aay) {
+                        for (int aax=0; aax<(1<<FSAA); ++aax) {
+                            lum += palette[pframe[aay*SCREENWIDTH + aax]];
+                        }
+                    }
+                    lum >>= (FSAA*2);
+                    pframe += (1<<FSAA);
+#else
+                    uint8_t *pframe = &frame_buffer[display_frame_index][y*SCREENWIDTH + x];
+                    uint lum = palette[*pframe];
+#endif
+
 #if TESTCARD_BAR
                     if (x < 8)
-                        lum = (p*8+b)/2;
+                        lum = y*6;
 #endif
-                    lum = (lum >> 1) + (dither & lum);
+
+                    lum = (lum >> 5) + ((lum >> 4) & dither);
+                    lum = MIN(lum, 7);
+
+#if DEBUGLINE
+                    if (x < 6)
+                        lum = (-(((y>>(5-x))&1)==0))&7;
+                    if (y == debugline)
+                        lum = 7;
+#endif
 
                     byte >>= 1;
                     if (lum & level) {
@@ -596,14 +646,12 @@ void I_InitGraphics(void)
     stbar = resolve_vpatch_handle(VPATCH_STBAR);
     sem_init(&render_frame_ready, 0, 2);
     sem_init(&display_frame_freed, 1, 2);
-    sem_init(&core1_launch, 0, 1);
     pd_init();
 
     display_driver_init();
 
     multicore_launch_core1(core1);
-    // wait for core1 launch as it may do malloc and we have no mutex around that
-    sem_acquire_blocking(&core1_launch);
+
 #if USE_ZONE_FOR_MALLOC
     disallow_core1_malloc = true;
 #endif
@@ -709,142 +757,7 @@ void I_Endoom(byte *endoom_data) {
 
 void I_GraphicsCheckCommandLine(void)
 {
-//    int i;
-//
-//    //!
-//    // @category video
-//    // @vanilla
-//    //
-//    // Disable blitting the screen.
-//    //
-//
-//    noblit = M_CheckParm ("-noblit");
-//
-//    //!
-//    // @category video
-//    //
-//    // Don't grab the mouse when running in windowed mode.
-//    //
-//
-//    nograbmouse_override = M_ParmExists("-nograbmouse");
-//
-//    // default to fullscreen mode, allow override with command line
-//    // nofullscreen because we love prboom
-//
-//    //!
-//    // @category video
-//    //
-//    // Run in a window.
-//    //
-//
-//    if (M_CheckParm("-window") || M_CheckParm("-nofullscreen"))
-//    {
-//        fullscreen = false;
-//    }
-//
-//    //!
-//    // @category video
-//    //
-//    // Run in fullscreen mode.
-//    //
-//
-//    if (M_CheckParm("-fullscreen"))
-//    {
-//        fullscreen = true;
-//    }
-//
-//    //!
-//    // @category video
-//    //
-//    // Disable the mouse.
-//    //
-//
-//    nomouse = M_CheckParm("-nomouse") > 0;
-//
-//    //!
-//    // @category video
-//    // @arg <x>
-//    //
-//    // Specify the screen width, in pixels. Implies -window.
-//    //
-//
-//    i = M_CheckParmWithArgs("-width", 1);
-//
-//    if (i > 0)
-//    {
-//        window_width = atoi(myargv[i + 1]);
-//        fullscreen = false;
-//    }
-//
-//    //!
-//    // @category video
-//    // @arg <y>
-//    //
-//    // Specify the screen height, in pixels. Implies -window.
-//    //
-//
-//    i = M_CheckParmWithArgs("-height", 1);
-//
-//    if (i > 0)
-//    {
-//        window_height = atoi(myargv[i + 1]);
-//        fullscreen = false;
-//    }
-//
-//    //!
-//    // @category video
-//    // @arg <WxY>
-//    //
-//    // Specify the dimensions of the window. Implies -window.
-//    //
-//
-//    i = M_CheckParmWithArgs("-geometry", 1);
-//
-//    if (i > 0)
-//    {
-//        int w, h, s;
-//
-//        s = sscanf(myargv[i + 1], "%ix%i", &w, &h);
-//        if (s == 2)
-//        {
-//            window_width = w;
-//            window_height = h;
-//            fullscreen = false;
-//        }
-//    }
-//
-//    //!
-//    // @category video
-//    //
-//    // Don't scale up the screen. Implies -window.
-//    //
-//
-//    if (M_CheckParm("-1"))
-//    {
-//        SetScaleFactor(1);
-//    }
-//
-//    //!
-//    // @category video
-//    //
-//    // Double up the screen to 2x its normal size. Implies -window.
-//    //
-//
-//    if (M_CheckParm("-2"))
-//    {
-//        SetScaleFactor(2);
-//    }
-//
-//    //!
-//    // @category video
-//    //
-//    // Double up the screen to 3x its normal size. Implies -window.
-//    //
-//
-//    if (M_CheckParm("-3"))
-//    {
-//        SetScaleFactor(3);
-//    }
+
 }
 
 // Check if we have been invoked as a screensaver by xscreensaver.

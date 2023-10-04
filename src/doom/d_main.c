@@ -260,19 +260,12 @@ boolean D_Display (void)
 	break;
     }
 #endif
-    
+
     // draw buffered stuff to screen
     I_UpdateNoBlit ();
-    
+ 
     // draw the view directly
-#if !DOOM_TINY
     if (gamestate == GS_LEVEL && !automapactive && gametic)
-#else
-    // not sure what the reason for not drawing when gametic == 0 (i.e. the first frame of the game), however it means we
-    // don't draw anything in a network game until the sync is done, which screws up what we see during the wipe. I haven't
-    // seen any downside to doing the drawing.
-    if (gamestate == GS_LEVEL && !automapactive)
-#endif
 	    R_RenderPlayerView (&players[displayplayer]);
 
 #if !DOOM_TINY

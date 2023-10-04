@@ -28,10 +28,9 @@ Finally, you need to install the Doom data on it. Boot the Thumby into BOOTSEL m
 picotool load -v -t bin doom1.whx -o 0x10040000.
 ```
 
-Turn it off, unplug the USB cable, and turn it on again. Doom should happen.
+Turn it off and on again.
 
 [![Doom on a Thumby](https://img.youtube.com/vi/k7ztqNAVVsY/sddefault.jpg)](https://youtu.be/k7ztqNAVVsY)
-
 
 
 You can build a version that simulates the 72x40 glory on your PC.

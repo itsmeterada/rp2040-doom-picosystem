@@ -239,7 +239,7 @@ void V_DrawPatchList(const vpatchlist_t *patchlist) {
         int skip_top;
 #pragma GCC diagnostic pop
         int type = vpatch_type(patch);
-        
+
         if (patchlist[l].entry.y + h0 > VGASCREENHEIGHT) {
             // clipping bottom which is trivial
             h0 = VGASCREENHEIGHT - patchlist[l].entry.y;

@@ -33,6 +33,7 @@
 static_assert(((SCREENWIDTH)&7)==0, "");
 
 #define OVERLAY_DECIMATE 2
+//#define FSAA 1
 
 // Screen height used when aspect_ratio_correct=true.
 

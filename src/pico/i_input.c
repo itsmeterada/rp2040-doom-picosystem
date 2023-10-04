@@ -31,7 +31,9 @@
 #include "i_video.h"
 #include "m_argv.h"
 #include "m_config.h"
+#include "m_controls.h"
 #include "hardware/uart.h"
+#include "hardware/gpio.h"
 #include <stdlib.h>
 #if USB_SUPPORT
 #include "pico/binary_info.h"
@@ -39,6 +41,294 @@
 #include "hardware/irq.h"
 bi_decl(bi_program_feature("USB keyboard support"));
 #endif
+
+#if JTHUMBY
+#define GPIO_BUTTONS 1
+#endif
+
+#if JEMBRICK
+#define ACCELEROMETER_SUPPORT 1
+#define PIO_CAPSENSE 1
+#endif
+
+#if JEMRING
+#define PIO_CAPSENSE 1
+#endif
+
+#if ACCELEROMETER_SUPPORT
+#define I2C_SDA_PIN 26
+#define I2C_SCL_PIN 27
+#include "pico/binary_info.h"
+#include "hardware/i2c.h"
+bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
+#endif
+
+#if PIO_CAPSENSE
+#include "pico/stdlib.h"
+#include "hardware/pio.h"
+#include "capsense.pio.h"
+
+typedef struct {
+    uint8_t pin;
+    uint8_t sm;
+    uint8_t scancode;
+    uint8_t state;
+    uint32_t zero;
+} capsensor_t;
+
+static capsensor_t capsensors[] = {
+#if JEMBRICK
+    { 0, 0, 44, 0, 0x0fffffff},
+    { 1, 1, 224, 0, 0x0fffffff},
+#elif JEMRING
+    { 0, 0, 0x50, 0, 0}, // left
+    { 1, 1, 0x52, 0, 0}, // up
+    { 2, 2, 0x4f, 0, 0}, // right
+    
+    { 3, 3, 224, 0, 0}, // fire
+#endif
+};
+
+static uint32_t capsense_window = 2048;
+#endif
+
+#if ACCELEROMETER_SUPPORT
+
+#define ACC_ADDR 15
+static bool acc_dir[6] = {0};
+
+void acc_press(int tilt, int scancode, int mod, int axis) {
+    if (tilt > 5) {
+        if (!acc_dir[axis]) {
+            acc_dir[axis] = true;
+
+            event_t event;
+            event.type = ev_keydown;
+            event.data1 = TranslateKey(scancode);
+            event.data2 = GetLocalizedKey(scancode);
+            event.data3 = GetTypedChar(scancode, mod & WITH_SHIFT ? 1 : 0);
+            D_PostEvent(&event);
+        }
+    } else if (tilt < 5)  {
+        if (acc_dir[axis]) {
+            acc_dir[axis] = false;
+
+            event_t event;
+            event.type = ev_keyup;
+            event.data1 = TranslateKey(scancode);
+            event.data2 = 0;
+            event.data3 = 0;
+            D_PostEvent(&event);
+        }
+    }
+}
+
+void accelerometer_init() {
+    i2c_init(i2c1, 400000);
+    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
+    //gpio_pull_up(I2C_SDA_PIN);
+    //gpio_pull_up(I2C_SCL_PIN);
+
+    const uint8_t CTRL_REG1 = 0x1B;
+    const uint8_t CTRL_REG2 = 0x1D;
+    const uint8_t DATA_CTRL_REG = 0x21;
+    //resolution = 16384
+
+    uint8_t data[2];
+    
+    data[0] = CTRL_REG1;
+    data[1] = 0;
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+
+    data[0] = CTRL_REG2;
+    data[1] = 0;
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+
+    data[1] = 0x80;
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+
+    sleep_ms(2);
+
+    data[0] = CTRL_REG1;
+    data[1] = 0b01000000;   // Stand-by, High-Res, Interrupts-Off, 2g, Wakeup-Disabled
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+
+    data[0] = DATA_CTRL_REG;
+    data[1] = 0b00000011;  // 100Hz
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+
+    data[0] = CTRL_REG1;
+    data[1] = 0b11000000;   // Operating, High-Res, Interrupts-Off, 2g, Wakeup-Disabled
+    i2c_write_blocking(i2c1, ACC_ADDR, data, 2, false);
+}
+
+void accelerometer_getevent() {
+    const uint8_t cmd_vec[] = {0x06};
+    int8_t acc_vec[6] = {};
+    i2c_write_blocking(i2c1, ACC_ADDR, cmd_vec, sizeof(cmd_vec), false);
+    i2c_read_blocking(i2c1, ACC_ADDR, (uint8_t*)acc_vec, sizeof(acc_vec), false);
+    acc_press( acc_vec[1], 0x52, 0, 0); //Up
+    acc_press(-acc_vec[1], 0x51, 0, 1); //Down
+
+    acc_press( acc_vec[5], 0x50, 0, 2); //Left
+    acc_press(-acc_vec[5], 0x4f, 0, 3); //Right
+}
+#endif
+
+#if PIO_CAPSENSE
+void capsense_init() {
+    PIO pio = pio0;
+    uint offset = capsense_program_offset(pio);
+
+    for (int i = 0; i < sizeof(capsensors) / sizeof(*capsensors); ++i) {
+        capsensors[i].sm = pio_claim_unused_sm(pio, true);
+        capsense_program_init(pio, capsensors[i].sm, offset, capsensors[i].pin);
+    }
+}
+
+void capsense_getevent() {
+    for (int i = 0; i < sizeof(capsensors) / sizeof(*capsensors); ++i) {
+        uint32_t count = capsense_program_read(pio0, capsensors[i].sm);
+
+        if (count < capsensors[i].zero) {
+            capsensors[i].zero = count;
+        } else if (count > capsensors[i].zero + capsense_window) {
+            capsensors[i].zero = count - capsense_window;
+        }
+
+        count -= capsensors[i].zero;
+
+        if (!capsensors[i].state && count > ((capsense_window * 3) / 4)) {
+            capsensors[i].state = true;
+
+            event_t event;
+            event.type = ev_keydown;
+            event.data1 = TranslateKey(capsensors[i].scancode);
+            event.data2 = GetLocalizedKey(capsensors[i].scancode);
+            event.data3 = GetTypedChar(capsensors[i].scancode, 0);
+            D_PostEvent(&event);
+
+        } else if (capsensors[i].state && count < (capsense_window / 4)) {
+            capsensors[i].state = false;
+
+            event_t event;
+            event.type = ev_keyup;
+            event.data1 = TranslateKey(capsensors[i].scancode);
+            event.data2 = 0;
+            event.data3 = 0;
+            D_PostEvent(&event);
+        }
+    }
+}
+#endif
+
+#if GPIO_BUTTONS
+
+enum {
+    BTN_L,
+    BTN_U,
+    BTN_R,
+    BTN_D,
+    BTN_1,
+    BTN_2,
+    BTN_COUNT
+};
+
+static const uint8_t button_pins[BTN_COUNT] = {
+    3, 4, 5, 6, 24, 27
+};
+static uint8_t button_state[BTN_COUNT] = {0};
+
+void buttons_init() {
+    for (int i = 0; i < count_of(button_pins); ++i) {
+        gpio_init(button_pins[i]);
+        gpio_set_dir(button_pins[i], GPIO_IN);
+        gpio_pull_up(button_pins[i]);
+    }
+
+    key_right = KEY_RIGHTARROW;
+    key_left = KEY_LEFTARROW;
+    key_up = KEY_UPARROW;
+    key_down = KEY_DOWNARROW;
+
+    key_fire = KEY_RCTRL;
+
+    key_use = KEY_RSHIFT;
+    key_strafe = KEY_RSHIFT;
+    key_speed = KEY_RSHIFT;
+
+    key_prevweapon = '[';
+    key_nextweapon = ']';
+
+    //key_menu_activate  = KEY_ESCAPE;
+    key_menu_up        = KEY_UPARROW;
+    key_menu_down      = KEY_DOWNARROW;
+    key_menu_left      = KEY_LEFTARROW;
+    key_menu_right     = KEY_RIGHTARROW;
+    key_menu_back      = KEY_RSHIFT;
+    key_menu_forward   = KEY_RCTRL;
+    key_menu_confirm   = KEY_RCTRL;
+    key_menu_abort     = KEY_RSHIFT;
+}
+
+void button_event(key_type_t key, bool pressed) {
+    event_t event;
+    if (pressed) {
+        event.type = ev_keydown;
+        event.data1 = key;
+        event.data2 = key;
+        event.data3 = key;
+    } else {
+        event.type = ev_keyup;
+        event.data1 = key;
+        event.data2 = 0;
+        event.data3 = 0;
+    }
+    D_PostEvent(&event);
+}
+
+void buttons_getevent() {
+    for (int i = 0; i < BTN_COUNT; ++i) {
+        bool pressed = (gpio_get(button_pins[i]) == 0);
+        if (pressed != (button_state[i] != 0)) {
+            bool alt = (button_state[i] > 1);
+            button_state[i] = pressed;
+
+            switch (i) {
+                case BTN_L:
+                    button_event(key_left, pressed);
+                    break;
+                case BTN_U:
+                    button_event(key_up, pressed);
+                    break;
+                case BTN_R:
+                    button_event(key_right, pressed);
+                    break;
+                case BTN_D:
+                    if (pressed && button_state[BTN_1]) {
+                        button_state[i] = 3;
+                        alt = true;
+                    }
+                    if (alt) {
+                        button_event(key_nextweapon, pressed);
+                    } else {
+                        button_event(key_down, pressed);
+                    }
+                    break;
+                case BTN_1:
+                    button_event(key_use, pressed);
+                    break;
+                case BTN_2:
+                    button_event(key_fire, pressed);
+                    break;
+            }
+        }
+    }
+}
+
+#endif
+
 
 static const int scancode_translate_table[] = SCANCODE_TO_KEYS_ARRAY;
 
@@ -520,6 +810,20 @@ void I_InputInit(void) {
     tusb_init();
     irq_set_priority(USBCTRL_IRQ, 0xc0);
 #endif
+
+#if ACCELEROMETER_SUPPORT
+    accelerometer_init();
+#endif
+
+#if PIO_CAPSENSE
+    capsense_init();
+#endif
+
+#if GPIO_BUTTONS
+    buttons_init();
+#endif
+
+
 }
 
 void I_GetEvent() {
@@ -530,6 +834,20 @@ void I_GetEvent() {
 }
 
 void I_GetEventTimeout(int key_timeout) {
+
+#if ACCELEROMETER_SUPPORT
+    accelerometer_getevent();
+#endif
+
+#if PIO_CAPSENSE
+    capsense_getevent();
+#endif
+
+#if GPIO_BUTTONS
+    buttons_getevent();
+#endif
+
+
 #if PICO_ON_DEVICE && !NO_USE_UART
     if (uart_is_readable(uart_default)) {
         char c = uart_getc(uart_default);

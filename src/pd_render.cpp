@@ -2613,77 +2613,7 @@ void pd_end_frame(int wipe_start) {
     DEBUG_PINS_SET(full_render, 1);
 
     uint8_t *list_buffer_limit = list_buffer + count_of(list_buffer);
-    if (!inhelpscreens) {
-        if (was_in_help) {
-//            // todo graham, wtf this was a complete guess - why should this be necessary, and if so why
-//            //  not for splash screens
-//            memset(patch_decoder_tmp_table_patch_numbers, 0, sizeof(patch_decoder_tmp_table_patch_numbers));
-            //next_video_type = gamestate == GS_LEVEL ? VIDEO_TYPE_DOUBLE : VIDEO_TYPE_SINGLE;
-next_video_type = VIDEO_TYPE_DOUBLE;
-            wipestate = WIPESTATE_NONE;
-            post_wipecount = 0; // this causes us to redraw intermission screens
-            sub_gamestate = 0; // and splash screens
-        }
-        switch (wipestate) {
-            case WIPESTATE_NONE: {
-                if (wipe_start) {
-                    if (gamestate != GS_LEVEL) {
-                        render_frame_index ^= 1;
-                        render_frame_buffer = frame_buffer[render_frame_index];
-                        I_VideoBuffer = render_frame_buffer;
-                        draw_fullscreen_background();
-                    }
 
-                    /*if (next_video_type == VIDEO_TYPE_DOUBLE) {
-                        // coming from level already, so draw statusbar
-                        draw_stbar_on_framebuffer(render_frame_index, false); // argh it is the wrong status bar
-                    }
-
-                    clip_columns(0, MAIN_VIEWHEIGHT - 32 -
-                                    1); // note this is a noop in non GS_LEVEL so don't bother to add if
-                                    */
-                    next_video_type = VIDEO_TYPE_WIPE;
-                    // steal space for our wipe data structures
-                    memset(cached_flat_picnum, -1, sizeof(cached_flat_picnum));
-                    wipe_yoffsets_raw = (int16_t *) (list_buffer_limit - 4096);
-                    wipe_yoffsets = list_buffer_limit - 4096 + SCREENWIDTH * 2;
-
-                    memset(wipe_yoffsets, 0, SCREENWIDTH);
-                    wipe_yoffsets_raw[0] = -6;//-(M_Random() % 12);
-                    for (int i = 1; i < SCREENWIDTH; i++) {
-                        int r = (M_Random() % 3) - 1;
-                        wipe_yoffsets_raw[i] = wipe_yoffsets_raw[i - 1] + r;
-                        if (wipe_yoffsets_raw[i] > 0) wipe_yoffsets_raw[i] = 0;
-                        else if (wipe_yoffsets_raw[i] == -12) wipe_yoffsets_raw[i] = -11;
-                    }
-                    wipe_linelookup = (uint32_t *) (wipe_yoffsets + SCREENWIDTH);
-                    uint screen_front = render_frame_index ^ 1; // what was currently displayed
-                    uint32_t base;
-#if PICO_ON_DEVICE
-                    base = (uintptr_t) &frame_buffer[0][0];
-#else
-                    base = 0;
-#endif
-                    for (int i = 0; i < SCREENHEIGHT; i++) {
-                        wipe_linelookup[i] = base + screen_front * SCREENWIDTH * SCREENHEIGHT + i * SCREENWIDTH;
-                    }
-                    wipestate = WIPESTATE_SKIP1;
-                    wipe_min = 0;
-                }
-                break;
-            }
-            default: {
-                // todo check we are on the right frame before exiting
-                if (wipe_min >= 200) {
-                    //next_video_type = gamestate == GS_LEVEL ? VIDEO_TYPE_DOUBLE : VIDEO_TYPE_SINGLE;
-next_video_type = VIDEO_TYPE_DOUBLE;
-                    wipestate = WIPESTATE_NONE;
-                    post_wipecount = 0;
-                }
-                break;
-            }
-        }
-    }
     I_VideoBuffer = render_frame_buffer;
     if (wipestate) list_buffer_limit -= 4096;
     // we need to use the lower limit of this frame and the last since the final wipe frame may still be using the data
