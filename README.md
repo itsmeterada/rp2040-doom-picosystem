@@ -5,8 +5,8 @@ This is a fork of RP2040 Doom targeting the Thumby. It switches the display betw
 pretty reasonable greyscale. Sound is currently unsupported. It doesn't overclock the device like the VGA version.
 
 Different batches have slightly different displays. If you get a display that doesn't sync, or doesn't do the greyscale trick, try
-fiddling with the `FRAME_PERIOD` in `i_video.c`. The settings here work on the Thumby I have, but other devices I've encountered have
-needed a frame period of around 6400, and `PARK_LINES` of 2.
+fiddling with the `FRAME_PERIOD` in `i_video.c`. The settings here work on the Thumby I have, but [other](https://www.youtube.com/watch?v=o76U0JPrMFk)
+[devices](https://www.youtube.com/watch?v=-G9adESjjRg) have sometimes needed a frame period of around 6400, and `PARK_LINES` of 2.
 
 ## Controls
 
