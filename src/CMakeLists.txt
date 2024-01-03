@@ -40,7 +40,7 @@ if (NOT PICO_SDK)
             i_system.c
     )
 else()
-    add_subdirectory(pico)
+    add_subdirectory(picosystem)
 endif()
 
 target_link_libraries(common INTERFACE common_${I_PLATFORM})
