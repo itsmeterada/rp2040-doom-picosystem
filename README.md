@@ -1,5 +1,7 @@
 # RP2040 Doom
 
+> **⚠️ Work in Progress**: This fork is under active development. Features may be incomplete or unstable.
+
 ## Fork Changes (itsmeterada)
 
 This fork adds support for additional handheld devices:
