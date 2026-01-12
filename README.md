@@ -1,5 +1,43 @@
 # RP2040 Doom
 
+## Fork Changes (itsmeterada)
+
+This fork adds support for additional handheld devices:
+
+### PicoSystem Support
+- **Hardware**: Pimoroni PicoSystem (RP2040, ST7789 240x240 LCD)
+- **Resolution**: 72x40 internal, scaled to 144x80 on display
+- **Controls**: D-pad for movement, A=Fire, B=Use, X=Strafe, Y=Run
+
+**Stability improvements:**
+- Frame buffer zero-initialization to prevent garbage display on boot
+- Z_FreeTags safety checks with iteration limits to prevent hangs
+- Improved shortptr handling for memory operations
+
+**Build for PicoSystem:**
+```bash
+mkdir build_picosystem
+cd build_picosystem
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_SDK_PATH=/path/to/pico-sdk -DPICO_EXTRAS_PATH=/path/to/pico-extras ..
+make doom_tiny
+```
+
+### ThumbyColor Support (Experimental)
+- **Hardware**: ThumbyColor (RP2350, GC9107 128x128 LCD)
+- **Resolution**: 128x80 internal, centered on 128x128 display
+- **Note**: Requires Pico SDK 2.0+ for RP2350 support
+
+**Build for ThumbyColor:**
+```bash
+mkdir build_thumbycolor
+cd build_thumbycolor
+cmake -DPICO_PLATFORM=rp2350 -DTHUMBYCOLOR=ON ..
+make doom_thumbycolor
+```
+
+---
+
+## Original Thumby Version
 
 This is a fork of RP2040 Doom targeting the Thumby. It switches the display between different contrast levels fast enough to generate
 pretty reasonable greyscale. Sound is currently unsupported. It doesn't overclock the device like the VGA version.
