@@ -183,6 +183,19 @@ static uint8_t *render_frame_buffer;
 static uint8_t render_frame_index;
 static uint8_t render_overlay_index;
 
+// Safe pixel write for debugging buffer overflows
+#if PICO_ON_DEVICE
+#define SAFE_PIXEL_WRITE(p, val) do { \
+    if ((p) >= render_frame_buffer && (p) < render_frame_buffer + SCREENWIDTH * SCREENHEIGHT) { \
+        *(p) = (val); \
+    } \
+} while(0)
+#define SAFE_BOUNDS_CHECK(x, y) ((x) >= 0 && (x) < SCREENWIDTH && (y) >= 0 && (y) < SCREENHEIGHT)
+#else
+#define SAFE_PIXEL_WRITE(p, val) (*(p) = (val))
+#define SAFE_BOUNDS_CHECK(x, y) (true)
+#endif
+
 static_assert(NO_USE_DC_COLORMAP, "");
 static_assert(USE_ROWAD, ""); // don't want things moving!
 
@@ -824,6 +837,8 @@ void pd_init() {
     sem_init(&core0_done, 0, 1);
     sem_init(&core1_done, 0, 1);
 #endif
+    // Zero-initialize frame buffers to prevent garbage display
+    memset(frame_buffer, 0, sizeof(frame_buffer));
 #if PICO_ON_DEVICE
     static_assert(sizeof(vpatchlists_t) < 0xc00, "");
     vpatchlists = (vpatchlists_t *)(USBCTRL_DPRAM_BASE + 0x400);
@@ -1135,12 +1150,14 @@ static int16_t predraw_visplanes() {
             uint8_t color = c.plane;
 //            printf("%d: %d -> %d %02x %d\n", x, c.yl, c.yh, color, c.texturemid == TEXTUREMID_PLANE);
             if (c.texturemid == TEXTUREMID_PLANE) {
-                uint8_t *vp = visplane_bit_col + c.yl * SCREENWIDTH / 8;
-                for (int y = c.yl; y <= c.yh; y++) {
-                    *p = color;
-                    p += SCREENWIDTH;
-                    *vp |= visplane_bit_bit;
-                    vp += SCREENWIDTH / 8;
+                if (SAFE_BOUNDS_CHECK(x, c.yl) && SAFE_BOUNDS_CHECK(x, c.yh)) {
+                    uint8_t *vp = visplane_bit_col + c.yl * SCREENWIDTH / 8;
+                    for (int y = c.yl; y <= c.yh; y++) {
+                        *p = color;
+                        p += SCREENWIDTH;
+                        *vp |= visplane_bit_bit;
+                        vp += SCREENWIDTH / 8;
+                    }
                 }
                 *last = c.next;
                 // we replace c with two elements in the new free list of plane runs
@@ -2271,9 +2288,11 @@ static void draw_composite_columns(int texture_num, int tex_head) {
     //                    fixed_t start = (texturemid + (c.yl - centery) * fracstep) >> FRACBITS;
     //                    fixed_t end = (texturemid + (c.yh - centery) * fracstep) >> FRACBITS;
     //                    if (end > 128) lcolor = 0xfc;
-                        for (int y = 0; y <= c.yh - c.yl; y++) {
-                            *p = lcolor;
-                            p += SCREENWIDTH;
+                        if (SAFE_BOUNDS_CHECK(c.x, c.yl) && SAFE_BOUNDS_CHECK(c.x, c.yh)) {
+                            for (int y = 0; y <= c.yh - c.yl; y++) {
+                                *p = lcolor;
+                                p += SCREENWIDTH;
+                            }
                         }
                         i = c.next;
                     } while (i != -1);
@@ -2373,10 +2392,10 @@ static void draw_fuzz_columns() {
             if (yl == 0) yl = 1;
             if (yh >= SCREENHEIGHT - 1) yh = SCREENHEIGHT - 2;
 
-            if (yl <= yh) {
+            if (yl <= yh && SAFE_BOUNDS_CHECK(x, yl) && SAFE_BOUNDS_CHECK(x, yh)) {
                 uint8_t *p = screen_col + yl * SCREENWIDTH;
                 for (int y = 0; y <= yh - yl; y++) {
-                    *p = darken_map[p[fuzzoffset[fuzzpos]]];
+                    SAFE_PIXEL_WRITE(p, darken_map[p[fuzzoffset[fuzzpos]]]);
 
                     // Clamp table lookup index.
                     if (++fuzzpos == FUZZTABLE)
@@ -2421,25 +2440,18 @@ static void draw_splash(int patch_num, uint8_t *dest) {
             }
             th_bit_input bi;
             if (patch_byte_addressed(pdi.patch)) {
-                th_bit_input_init(&bi, pdi.patch + pdi.data_index + col_offset); // todo read off end potential
+                th_bit_input_init(&bi, pdi.patch + pdi.data_index + col_offset);
             } else {
-                th_bit_input_init_bit_offset(&bi, pdi.patch + pdi.data_index, col_offset); // todo read off end potential
+                th_bit_input_init_bit_offset(&bi, pdi.patch + pdi.data_index, col_offset);
             }
             if (!pdi.header.encoding) {
-                assert(false); // we don't have this
-    //            for (int j = 0; j <= h; j++) {
-    //                pixels[j] = th_decode_table_special(pdi.decoder, patch_decoder_table, &bi);
-    //            }
+                assert(false);
             } else {
                 uint8_t* pcol = dest + x;
                 uint8_t* pend = dest + (SCREENWIDTH*SCREENHEIGHT);
                 int stride = SCREENWIDTH;
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-                uint8_t prev_pixel;
-    #pragma GCC diagnostic pop
+                uint8_t prev_pixel = 0;
                 uint16_t p;
-                int y = 0;
                 for (int row = 0; row < h; ++row) {
                     p = th_decode_table_special_16(pdi.decoder, patch_decoder_table, &bi);
                     if (p >= 256) {
@@ -2560,7 +2572,7 @@ static void uh_oh_discard_columns(int render_col_limit) {
             auto &c = render_cols[i];
             if (i >= render_col_limit) {
                 // we have to throw it out, but we will draw something - black is as good as anything i guess
-                if (x < SCREENWIDTH) {
+                if (x < SCREENWIDTH && SAFE_BOUNDS_CHECK(x, c.yl) && SAFE_BOUNDS_CHECK(x, c.yh)) {
                     uint8_t *dest = render_frame_buffer + x + c.yl * SCREENWIDTH;
                     for(int y = c.yh -c.yl; y >= 0; y--, dest += SCREENWIDTH) {
                         *dest = 0;
@@ -2646,10 +2658,14 @@ void pd_end_frame(int wipe_start) {
             if (not_fully_covered_cols[i]) {
                 for (int j = 0; j < 32; j++) {
                     if (not_fully_covered_cols[i] & (1u << j)) {
-                        uint32_t *dest = (uint32_t *) (render_frame_buffer + i * 4 * 32 + j * 4 +
-                                                       not_fully_covered_yl * SCREENHEIGHT);
-                        for (int y = not_fully_covered_yl; y <= not_fully_covered_yh; y++, dest += SCREENWIDTH / 4) {
-                            *dest = 0;
+                        int x_pos = i * 4 * 32 + j * 4;
+                        if (x_pos >= 0 && x_pos < SCREENWIDTH &&
+                            not_fully_covered_yl >= 0 && not_fully_covered_yh < SCREENHEIGHT) {
+                            uint32_t *dest = (uint32_t *) (render_frame_buffer + x_pos +
+                                                           not_fully_covered_yl * SCREENWIDTH);
+                            for (int y = not_fully_covered_yl; y <= not_fully_covered_yh; y++, dest += SCREENWIDTH / 4) {
+                                *dest = 0;
+                            }
                         }
                     }
                 }
@@ -2696,8 +2712,6 @@ void pd_end_frame(int wipe_start) {
         was_in_help = false;
         switch (gamestate) {
             case GS_LEVEL:
-//                if (!gametic)
-//                    break;
                 if (!wipestate) {
                     if (automapactive)
                         AM_Drawer();

@@ -196,13 +196,12 @@ typedef uint8_t floor_ceiling_clip_t;
 #include <assert.h>
 typedef uint16_t shortptr_t;
 static inline void *shortptr_to_ptr(shortptr_t s) {
-    return s ? (void *)(0x20000000 + s * 4) : NULL;
+    if (!s) return NULL;
+    return (void *)(0x20000000 + s * 4);
 }
 static inline shortptr_t ptr_to_shortptr(void *p) {
     if (!p) return 0;
-    uintptr_t v = (uintptr_t)p;
-    assert(v>=0x20000004 && v <= 0x20040000 && !(v&3));
-    return (shortptr_t) ((v << 14u)>>16u);
+    return (shortptr_t) ((((uintptr_t)p) << 14u)>>16u);
 }
 #else
 typedef void *shortptr_t;

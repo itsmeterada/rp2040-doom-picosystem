@@ -41,6 +41,9 @@ if (NOT PICO_SDK)
     )
 else()
     add_subdirectory(picosystem)
+    if (THUMBYCOLOR)
+        add_subdirectory(thumbycolor)
+    endif()
 endif()
 
 target_link_libraries(common INTERFACE common_${I_PLATFORM})
@@ -502,7 +505,7 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
         # SDK minimilization
         PICO_TIME_DEFAULT_ALARM_POOL_DISABLED=1
         PICO_TIME_DEFAULT_ALARM_POOL_MAX_TIMERS=1
-        PICO_DISABLE_SHARED_IRQ_HANDLERS=1
+        # PICO_DISABLE_SHARED_IRQ_HANDLERS=1  # Disabled: conflicts with irq_set_exclusive_handler in piconet.c
         PICO_USE_OPTIMISTIC_SBRK=1
 
         # MUSIC

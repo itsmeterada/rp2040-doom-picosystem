@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 #include <doom/r_data.h>
 #include "doom/f_wipe.h"
 #include "pico.h"
@@ -133,7 +134,7 @@ unsigned int joywait = 0;
 pixel_t *I_VideoBuffer; // todo can't have this
 
 uint8_t __aligned(4) frame_buffer[2][SCREENWIDTH * SCREENHEIGHT];
-static uint8_t palette[256];
+static uint16_t palette_rgb565[256];  // RGB565 color palette for PicoSystem LCD
 static uint8_t __scratch_x("shared_pal") shared_pal[NUM_SHARED_PALETTES][16];
 static int8_t next_pal=-1;
 
@@ -223,13 +224,12 @@ volatile uint8_t wipe_min;
 #pragma GCC optimize("O3")
 #endif
 
+// Forward declaration
+static inline uint16_t rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b);
 
-static inline uint8_t crapify_rgb(uint8_t r, uint8_t g, uint8_t b) {
-    uint lum = (r*5 + g*3 + b*3) / 8;
-    if (lum > 255) {
-        lum = 255;
-    }
-    return lum;
+static inline uint16_t crapify_rgb(uint8_t r, uint8_t g, uint8_t b) {
+    // Convert RGB888 to RGB565 for PicoSystem color LCD
+    return rgb888_to_rgb565(r, g, b);
 }
 
 // this is not in flash as quite large and only once per frame
@@ -267,7 +267,7 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                         b = gammatable[usegamma-1][b];
                     }
 
-                    palette[i] = crapify_rgb(r, g, b);
+                    palette_rgb565[i] = crapify_rgb(r, g, b);
                 }
             } else {
                 int mul, r0, g0, b0;
@@ -291,7 +291,7 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                     g += ((g0 - g) * mul) >> 16;
                     b += ((b0 - b) * mul) >> 16;
 
-                    palette[i] = crapify_rgb(r, g, b);
+                    palette_rgb565[i] = crapify_rgb(r, g, b);
                 }
             }
             next_pal = -1;
@@ -301,37 +301,20 @@ void __noinline new_frame_init_overlays_palette_and_wipe() {
                 assert(vpatch_colorcount(patch) <= 16);
                 assert(vpatch_has_shared_palette(patch));
                 for (int j = 0; j < 16; j++) {
-                    shared_pal[i][j] = palette[vpatch_palette(patch)[j]];
+                    // Convert RGB565 back to grayscale for shared_pal
+                    uint16_t rgb565 = palette_rgb565[vpatch_palette(patch)[j]];
+                    uint8_t r = (rgb565 >> 11) << 3;
+                    uint8_t g = ((rgb565 >> 5) & 0x3F) << 2;
+                    uint8_t b = (rgb565 & 0x1F) << 3;
+                    shared_pal[i][j] = (r * 5 + g * 3 + b * 3) / 8;
                 }
             }
         }
         if (display_video_type == VIDEO_TYPE_WIPE) {
             printf("WIPEMIN %d\n", wipe_min);
-            if (wipe_min <= 200) {
-                bool regular = display_overlay_index; // just happens to toggle every frame
-                int new_wipe_min = 200;
-                for (int i = 0; i < SCREENWIDTH; i++) {
-                    int v;
-                    if (wipe_yoffsets_raw[i] < 0) {
-                        if (regular) {
-                            wipe_yoffsets_raw[i]++;
-                        }
-                        v = 0;
-                    } else {
-                        int dy = (wipe_yoffsets_raw[i] < 16) ? (1 + wipe_yoffsets_raw[i] + regular) / 2 : 4;
-                        if (wipe_yoffsets_raw[i] + dy > 200) {
-                            v = 200;
-                        } else {
-                            wipe_yoffsets_raw[i] += dy;
-                            v = wipe_yoffsets_raw[i];
-                        }
-                    }
-                    wipe_yoffsets[i] = v;
-                    if (v < new_wipe_min) new_wipe_min = v;
-                }
-                assert(new_wipe_min >= wipe_min);
-                wipe_min = new_wipe_min;
-            }
+            // Note: wipe is disabled for now to avoid potential issues
+            // Just complete the wipe immediately
+            wipe_min = SCREENHEIGHT + 1;
         }
     }
 }
@@ -360,6 +343,7 @@ void I_FinishUpdate (void)
 #if PICO_ON_DEVICE
 #define LOW_PRIO_IRQ 31
 #include "hardware/irq.h"
+#include "hardware/pwm.h"
 
 static void __not_in_flash_func(free_buffer_callback)() {
 //    irq_set_pending(LOW_PRIO_IRQ);
@@ -369,85 +353,157 @@ static void __not_in_flash_func(free_buffer_callback)() {
 
 #define FRAME_PERIOD J_OLED_FRAME_PERIOD
 
-// some oleds need 2 park lines, but that's not as robust
-#define PARK_LINES 1
+// PicoSystem LCD pins (explicit definitions)
+#define LCD_SCK_PIN  6
+#define LCD_MOSI_PIN 7
+#define LCD_CS_PIN   5
+#define LCD_DC_PIN   9
+#define LCD_RESET_PIN 4
+#define LCD_BL_PIN   12
 
-static const uint8_t command_initialise[] = {
-    0xAE,           //display off
-    0xD5, 0xF0,     //set display clock divide
-    0xA8, DISPLAYHEIGHT-1, //set multiplex ratio 39
-    0xD3, 0x00,     //set display offset
-    0x40,           //set display start line 0
-    0x8D, 0x14,     //set charge pump enabled (0x14:7.5v 0x15:6.0v 0x94:8.5v 0x95:9.0v)
-    0x20, 0x00,     //set addressing mode horizontal
-    0xA1,           //set segment remap (0=seg0)
-    0xC0,           //set com scan direction
-    0xDA, 0x12,     //set alternate com pin configuration
-    0xAD, 0x30,     //internal iref enabled (0x30:240uA 0x10:150uA)
-    0x81, 0x01,     //set contrast
-    0xD9, 0x11,     //set pre-charge period
-    0xDB, 0x20,     //set vcomh deselect
-    0xA4,           //unset entire display on
-    0xA6,           //unset inverse display
-    0x21, 28, 99,   //set column address / start 28 / end 99
-    0x22, 0, 4,     //set page address / start 0 / end 4
-    0xAF            // set display on
+// ST7789 command definitions
+enum st7789_cmd {
+    ST7789_SWRESET   = 0x01,
+    ST7789_SLPOUT    = 0x11,
+    ST7789_INVON     = 0x21,
+    ST7789_DISPON    = 0x29,
+    ST7789_CASET     = 0x2A,
+    ST7789_RASET     = 0x2B,
+    ST7789_RAMWR     = 0x2C,
+    ST7789_TEON      = 0x35,
+    ST7789_MADCTL    = 0x36,
+    ST7789_COLMOD    = 0x3A,
+    ST7789_FRMCTR2   = 0xB2,
+    ST7789_GCTRL     = 0xB7,
+    ST7789_VCOMS     = 0xBB,
+    ST7789_LCMCTRL   = 0xC0,
+    ST7789_VDVVRHEN  = 0xC2,
+    ST7789_VRHS      = 0xC3,
+    ST7789_VDVS      = 0xC4,
+    ST7789_FRCTRL2   = 0xC6,
+    ST7789_PWRCTRL1  = 0xD0,
+    ST7789_GMCTRP1   = 0xE0,
+    ST7789_GMCTRN1   = 0xE1,
+    ST7789_GAMSET    = 0x26,
 };
 
-static const uint8_t command_park[] = {
-    0xA8, PARK_LINES - 1,        //set 2-line multiplex
-    0xD3, 4         //set display offset off the... bottom?
-};
+static void st7789_command(uint8_t cmd, size_t len, const char *data) {
+    gpio_put(LCD_CS_PIN, 0);
+    gpio_put(LCD_DC_PIN, 0); // command mode
+    spi_write_blocking(spi0, &cmd, 1);
+    if (data) {
+        gpio_put(LCD_DC_PIN, 1); // data mode
+        spi_write_blocking(spi0, (const uint8_t*)data, len);
+    }
+    gpio_put(LCD_CS_PIN, 1);
+}
 
-static uint8_t command_run[] = {
-    0x81, 1,        //set level
-    0xD3, 0,        //reset display offset
-    0xA8, DISPLAYHEIGHT + 16 - 1,       //multiplex + overscan
-};
+static uint16_t gamma_correct(uint8_t v) {
+    float gamma = 2.8f;
+    return (uint16_t)(powf((float)(v) / 100.0f, gamma) * 65535.0f + 0.5f);
+}
 
-static const uint8_t contrast[3] = {
-    0x7f, 0x1f, 0x07
-};
+static void set_backlight(uint8_t brightness) {
+    pwm_set_gpio_level(PICOSYSTEM_LCD_BACKLIGHT, gamma_correct(brightness));
+}
 
-uint8_t field_buffer[DISPLAYWIDTH*(DISPLAYHEIGHT/8)] = {};
+// Debug: blink LED to show we're alive
+static void debug_led_init() {
+    // Initialize RGB LED pins for PWM
+    pwm_config cfg = pwm_get_default_config();
 
-uint8_t byte_reverse(uint8_t b) {
-   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
-   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
-   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-   return b;
+    pwm_set_wrap(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_RED), 65535);
+    pwm_init(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_RED), &cfg, true);
+    gpio_set_function(PICOSYSTEM_PIN_RED, GPIO_FUNC_PWM);
+
+    pwm_set_wrap(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_GREEN), 65535);
+    pwm_init(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_GREEN), &cfg, true);
+    gpio_set_function(PICOSYSTEM_PIN_GREEN, GPIO_FUNC_PWM);
+
+    pwm_set_wrap(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_BLUE), 65535);
+    pwm_init(pwm_gpio_to_slice_num(PICOSYSTEM_PIN_BLUE), &cfg, true);
+    gpio_set_function(PICOSYSTEM_PIN_BLUE, GPIO_FUNC_PWM);
+}
+
+static void debug_led_set(uint8_t r, uint8_t g, uint8_t b) {
+    pwm_set_gpio_level(PICOSYSTEM_PIN_RED, gamma_correct(r));
+    pwm_set_gpio_level(PICOSYSTEM_PIN_GREEN, gamma_correct(g));
+    pwm_set_gpio_level(PICOSYSTEM_PIN_BLUE, gamma_correct(b));
 }
 
 static void display_driver_init() {
+    // === CHECKPOINT 1: We entered display_driver_init() ===
+    // Blink BLUE rapidly 5 times to show we're in display_driver_init
+    gpio_init(15); gpio_set_dir(15, GPIO_OUT);
+    for (int i = 0; i < 5; i++) {
+        gpio_put(15, 0); sleep_ms(100);
+        gpio_put(15, 1); sleep_ms(100);
+    }
+    sleep_ms(500);  // Pause
 
-    gpio_init(J_OLED_CS);
-    gpio_set_dir(J_OLED_CS, GPIO_OUT);
-    gpio_put(J_OLED_CS, 0);
+    // === BACKLIGHT - Try PWM like reference ===
+    pwm_config bl_cfg = pwm_get_default_config();
+    pwm_set_wrap(pwm_gpio_to_slice_num(LCD_BL_PIN), 65535);
+    pwm_init(pwm_gpio_to_slice_num(LCD_BL_PIN), &bl_cfg, true);
+    gpio_set_function(LCD_BL_PIN, GPIO_FUNC_PWM);
+    pwm_set_gpio_level(LCD_BL_PIN, 65535);  // Full brightness
 
-    gpio_init(J_OLED_RESET);
-    gpio_set_dir(J_OLED_RESET, GPIO_OUT);
-    gpio_put(J_OLED_RESET, 0);
+    // === SPI INIT - exactly like reference ===
+    spi_init(spi0, 8000000);
 
-    gpio_init(J_OLED_DC);
-    gpio_set_dir(J_OLED_DC, GPIO_OUT);
-    gpio_put(J_OLED_DC, 0);
+    // === RESET - exactly like reference ===
+    gpio_set_function(LCD_RESET_PIN, GPIO_FUNC_SIO);
+    gpio_set_dir(LCD_RESET_PIN, GPIO_OUT);
+    gpio_put(LCD_RESET_PIN, 0);
+    sleep_ms(100);
+    gpio_put(LCD_RESET_PIN, 1);
 
-    gpio_put(J_OLED_RESET, 0);
-    sleep_ms(1);
-    gpio_put(J_OLED_RESET, 1);
+    // === CONTROL PINS - exactly like reference ===
+    gpio_set_function(LCD_DC_PIN, GPIO_FUNC_SIO);
+    gpio_set_dir(LCD_DC_PIN, GPIO_OUT);
+    gpio_set_function(LCD_CS_PIN, GPIO_FUNC_SIO);
+    gpio_set_dir(LCD_CS_PIN, GPIO_OUT);
+    gpio_set_function(LCD_SCK_PIN, GPIO_FUNC_SPI);
+    gpio_set_function(LCD_MOSI_PIN, GPIO_FUNC_SPI);
 
-    gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
-    spi_init(spi0, 62500000);
-    spi_set_format(spi0, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    gpio_put(LCD_CS_PIN, 1);
 
-    gpio_put(J_OLED_CS, 1);
-    gpio_put(J_OLED_DC, 0);
-    gpio_put(J_OLED_CS, 0);
+    // === ST7789 INIT ===
+    st7789_command(ST7789_SWRESET, 0, NULL);
+    sleep_ms(5);
+    st7789_command(ST7789_MADCTL, 1, "\x04");
+    st7789_command(ST7789_TEON, 1, "\x00");
+    st7789_command(ST7789_FRMCTR2, 5, "\x0C\x0C\x00\x33\x33");
+    st7789_command(ST7789_COLMOD, 1, "\x05");  // RGB565
+    st7789_command(ST7789_GAMSET, 1, "\x01");
+    st7789_command(ST7789_GCTRL, 1, "\x14");
+    st7789_command(ST7789_VCOMS, 1, "\x25");
+    st7789_command(ST7789_LCMCTRL, 1, "\x2C");
+    st7789_command(ST7789_VDVVRHEN, 1, "\x01");
+    st7789_command(ST7789_VRHS, 1, "\x12");
+    st7789_command(ST7789_VDVS, 1, "\x20");
+    st7789_command(ST7789_PWRCTRL1, 2, "\xA4\xA1");
+    st7789_command(ST7789_FRCTRL2, 1, "\x1E");
+    st7789_command(ST7789_GMCTRP1, 14, "\xD0\x04\x0D\x11\x13\x2B\x3F\x54\x4C\x18\x0D\x0B\x1F\x23");
+    st7789_command(ST7789_GMCTRN1, 14, "\xD0\x04\x0C\x11\x13\x2C\x3F\x44\x51\x2F\x1F\x1F\x20\x23");
+    st7789_command(ST7789_INVON, 0, NULL);
+    sleep_ms(115);
+    st7789_command(ST7789_SLPOUT, 0, NULL);
+    st7789_command(ST7789_DISPON, 0, NULL);
+    st7789_command(ST7789_CASET, 4, "\x00\x00\x00\xef");
+    st7789_command(ST7789_RASET, 4, "\x00\x00\x00\xef");
+    st7789_command(ST7789_RAMWR, 0, NULL);
 
-    spi_write_blocking(spi0, command_initialise, sizeof(command_initialise));
+    // Switch to data mode (keep CS low, DC high)
+    gpio_put(LCD_CS_PIN, 0);
+    gpio_put(LCD_DC_PIN, 1);
 
-    gpio_put(J_OLED_CS, 1);
+    // Enable vsync input
+    gpio_init(8);
+    gpio_set_dir(8, GPIO_IN);
+
+    // Increase SPI speed for game
+    spi_set_baudrate(spi0, 62500000);
 }
 #else
 
@@ -543,97 +599,67 @@ static void simulate_display(uint dither) {
 
 //#define TESTCARD_BAR 1
 
+// Convert RGB888 to RGB565
+static inline uint16_t rgb888_to_rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
 static void core1() {
     absolute_time_t frame_time = get_absolute_time();
 
-    uint l = 0;
-    uint dither = 0;
-
     while (true) {
-#if PICO_ON_DEVICE
-        gpio_put(J_OLED_CS, 0);
-
-        gpio_put(J_OLED_DC, 0);
-        spi_write_blocking(spi0, command_park, sizeof(command_park));
-#endif
-
-        if (l == 0) {
-            sem_acquire_blocking(&vsync);
-        }
+        sem_acquire_blocking(&vsync);
 
 #if PICO_ON_DEVICE
-        uint8_t level = 0x04 >> l;
+        // Convert frame buffer to RGB565 and send to LCD
+        // The frame buffer is 320x200, the display is 240x240
+        // We need to scale/center the image
 
-        for (int p = 0; p < (DISPLAYHEIGHT / 8) ; ++p) {
+        // DOOM is 320x200, display is 240x240
+        // Scale 320->240 horizontally (0.75x) and 200->240 vertically (1.2x)
+        // This will show the full width with some vertical stretch
+
+        // Alternatively, maintain aspect ratio: 200*240/320 = 150 pixels high, centered
+        // Let's use full width scaling for now
+
+        // Display SCREENWIDTH x SCREENHEIGHT framebuffer scaled and centered on 240x240 display
+        // Scale up to fill display width, maintain aspect ratio
+        // 160x100 -> 240x150 (1.5x scale), centered with 45 pixel black bars top/bottom
+        // 240x150 -> 240x150 (1x scale), centered with 45 pixel black bars top/bottom
+
+        int scaled_height = SCREENHEIGHT * DISPLAYWIDTH / SCREENWIDTH;
+        int y_offset = (DISPLAYHEIGHT - scaled_height) / 2;
+
+        for (int y = 0; y < DISPLAYHEIGHT; ++y) {
+            int src_y = (y - y_offset) * SCREENHEIGHT / scaled_height;
+
             for (int x = 0; x < DISPLAYWIDTH; ++x) {
-                dither ^= 1;
-                uint8_t byte = 0;
-                for (int b = 0; b < 8; ++b) {
-                    dither ^= 1;
+                uint16_t pixel;
 
-                    int y = (DISPLAYHEIGHT-1)-(p*8+b);
-#if FSAA
-                    uint8_t *pframe = &frame_buffer[display_frame_index][y*(SCREENWIDTH<<FSAA) + (x<<FSAA)];
-                    uint lum = 0;
-                    for (int aay=0; aay<(1<<FSAA); ++aay) {
-                        for (int aax=0; aax<(1<<FSAA); ++aax) {
-                            lum += palette[pframe[aay*SCREENWIDTH + aax]];
-                        }
-                    }
-                    lum >>= (FSAA*2);
-                    pframe += (1<<FSAA);
-#else
-                    uint8_t *pframe = &frame_buffer[display_frame_index][y*SCREENWIDTH + x];
-                    uint lum = palette[*pframe];
-#endif
-
-#if TESTCARD_BAR
-                    if (x < 8)
-                        lum = y*6;
-#endif
-
-                    lum = (lum >> 5) + ((lum >> 4) & dither);
-                    lum = MIN(lum, 7);
-
-#if DEBUGLINE
-                    if (x < 6)
-                        lum = (-(((y>>(5-x))&1)==0))&7;
-                    if (y == debugline)
-                        lum = 7;
-#endif
-
-                    byte >>= 1;
-                    if (lum & level) {
-                        byte |= 0x80;
-                    }
+                if (y < y_offset || y >= y_offset + scaled_height) {
+                    // Black bar (top/bottom)
+                    pixel = 0x0000;
+                } else {
+                    int src_x = x * SCREENWIDTH / DISPLAYWIDTH;
+                    if (src_x >= SCREENWIDTH) src_x = SCREENWIDTH - 1;
+                    if (src_y >= SCREENHEIGHT) src_y = SCREENHEIGHT - 1;
+                    if (src_y < 0) src_y = 0;
+                    uint8_t *pframe = &frame_buffer[display_frame_index][src_y * SCREENWIDTH + src_x];
+                    pixel = palette_rgb565[*pframe];
                 }
-                field_buffer[p*DISPLAYWIDTH+x] = byte;
+
+                // Send RGB565 pixel (big-endian for ST7789)
+                uint8_t data[2] = { pixel >> 8, pixel & 0xFF };
+                spi_write_blocking(spi0, data, 2);
             }
         }
-        
-        command_run[1] = contrast[l];
+        // After sending exactly 240*240 pixels, the ST7789 resets to position 0,0
+        // so we're ready for the next frame without any commands
 #else
-        simulate_display(dither);
+        simulate_display(0);
 #endif
 
-        if (++l >= 3) {
-            l = 0;
-            dither ^= 1;
-        }
-
-        if (l == 0) {
-            sem_release(&vsync);
-        }
-
-#if PICO_ON_DEVICE
-        gpio_put(J_OLED_DC, 1);
-        spi_write_blocking(spi0, field_buffer, sizeof(field_buffer));
-        gpio_put(J_OLED_DC, 0);
-
-        spi_write_blocking(spi0, command_run, sizeof(command_run));
-
-        gpio_put(J_OLED_CS, 1);
-#endif
+        sem_release(&vsync);
 
         frame_time = delayed_by_us(frame_time, FRAME_PERIOD);
         sleep_until(frame_time);
@@ -645,7 +671,6 @@ void I_InitGraphics(void)
     stbar = resolve_vpatch_handle(VPATCH_STBAR);
     sem_init(&vsync, 1, 1);
     pd_init();
-
     display_driver_init();
 
     multicore_launch_core1(core1);

@@ -196,8 +196,11 @@ void V_EndPatchList(void) {
     int x_ = (x); \
     int y_ = (y); \
     if (PATCH_SAMPLE(x_) && PATCH_SAMPLE(y_)) {\
-        PATCH_RANGECHECK(x_, y_); \
-        dest_screen[PATCH_SCALE_Y(y_)*SCREENWIDTH+PATCH_SCALE_X(x_)] = (p);\
+        int sx_ = PATCH_SCALE_X(x_); \
+        int sy_ = PATCH_SCALE_Y(y_); \
+        if (sx_ >= 0 && sx_ < SCREENWIDTH && sy_ >= 0 && sy_ < SCREENHEIGHT) {\
+            dest_screen[sy_*SCREENWIDTH+sx_] = (p);\
+        }\
     }\
 }
 

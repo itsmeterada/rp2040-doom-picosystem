@@ -417,6 +417,13 @@ static void I_Pico_ShutdownSound(void)
 
 static boolean I_Pico_InitSound(boolean _use_sfx_prefix)
 {
+    // TODO: PicoSystem uses PWM audio on GPIO 11, not I2S
+    // I2S pins (22, 23) conflict with button pins on PicoSystem
+    // For now, disable sound to get display working first
+    sound_initialized = false;
+    return false;
+
+#if 0  // Original I2S code - disabled for PicoSystem
     int i;
     use_sfx_prefix = _use_sfx_prefix;
 
@@ -449,6 +456,7 @@ static boolean I_Pico_InitSound(boolean _use_sfx_prefix)
 
     sound_initialized = true;
     return true;
+#endif
 }
 
 static snddevice_t sound_pico_devices[] =

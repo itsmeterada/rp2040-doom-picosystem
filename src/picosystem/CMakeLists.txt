@@ -22,7 +22,7 @@ if (PICO_ON_DEVICE)
             PICO_HEAP_SIZE=0
             USE_ZONE_FOR_MALLOC=1
     )
-    target_link_libraries(common_pico INTERFACE  hardware_i2c hardware_spi)
+    target_link_libraries(common_pico INTERFACE  hardware_i2c hardware_spi hardware_pwm hardware_irq)
 
     #pico_generate_pio_header(common_pico ${CMAKE_CURRENT_LIST_DIR}/capsense.pio)
 endif()

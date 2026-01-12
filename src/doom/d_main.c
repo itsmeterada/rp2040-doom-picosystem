@@ -58,6 +58,7 @@
 #include "i_joystick.h"
 #include "i_system.h"
 #include "i_timer.h"
+
 #include "i_video.h"
 
 #include "g_game.h"
@@ -538,7 +539,9 @@ void D_DoomLoop (void)
 #if !NO_USE_MOUSE
     I_SetGrabMouseCallback(D_GrabMouseCallback);
 #endif
+
     I_InitGraphics();
+
 #if USB_SUPPORT
     printf("Sleeping 2s for USB devices\n"); // TinyUSB still grinds to a halt during connect/disconnect
     absolute_time_t end_time = make_timeout_time_ms(2000);
@@ -1567,11 +1570,13 @@ void D_DoomMain (void)
 #endif
 
     DEH_printf("W_Init: Init WADfiles.\n");
+
 #if !NO_FILE_ACCESS && !DOOM_TINY
     D_AddFile(iwadfile);
 #else
     D_AddFile("");
 #endif
+
     int numiwadlumps = numlumps;
 
 #if !DOOM_TINY

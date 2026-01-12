@@ -67,7 +67,7 @@ typedef struct {
     vpatchlist_t overlays[2][VPATCHLIST_COUNT_OVERLAY];
     uint16_t vpatch_doff[VPATCHLIST_COUNT_OVERLAY]; // where we are in the data
     // heads for each row of ordered (display order) patchlist indexes that start on that row
-    uint8_t vpatch_starters[200]; // screenheight
+    uint8_t vpatch_starters[200]; // VGA screenheight (200) for compatibility
     uint8_t vpatch_next[VPATCHLIST_COUNT_OVERLAY];
 } vpatchlists_t;
 static_assert(sizeof(vpatchlists_t) < 0xc00, "");

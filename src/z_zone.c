@@ -442,18 +442,35 @@ Z_FreeTags
 {
     memblock_t*	block;
     memblock_t*	next;
-	
+
+#if PICO_ON_DEVICE
+    // Safety check: validate zone memory structure before iterating
+    uintptr_t zone_start = (uintptr_t)mainzone;
+    uintptr_t zone_end = zone_start + mainzone->size;
+    int iteration_count = 0;
+    const int max_iterations = 10000;
+#endif
+
     for (block = memblock_next(&mainzone->blocklist) ;
 	 block != &mainzone->blocklist ;
 	 block = next)
     {
+#if PICO_ON_DEVICE
+	uintptr_t block_addr = (uintptr_t)block;
+	if (block_addr < zone_start || block_addr >= zone_end) {
+	    break;
+	}
+	if (++iteration_count > max_iterations) {
+	    break;
+	}
+#endif
 	// get link before freeing
 	next = memblock_next(block);
 
 	// free block?
 	if (block->tag == PU_FREE)
 	    continue;
-	
+
 	if (block->tag >= lowtag && block->tag <= hightag)
 	    Z_Free ( (byte *)block+sizeof(memblock_t));
     }

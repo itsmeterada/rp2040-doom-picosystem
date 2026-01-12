@@ -28,11 +28,18 @@
 #define VGASCREENWIDTH 320
 #define VGASCREENHEIGHT 200
 
+#if THUMBYCOLOR
+// ThumbyColor: 128x80 internal resolution for 128x128 display
+#define SCREENWIDTH 128
+#define SCREENHEIGHT 80
+#define OVERLAY_DECIMATE 1
+#else
+// PicoSystem: 72x40 internal resolution
 #define SCREENWIDTH 72
 #define SCREENHEIGHT 40
-static_assert(((SCREENWIDTH)&7)==0, "");
-
 #define OVERLAY_DECIMATE 2
+#endif
+static_assert(((SCREENWIDTH)&7)==0, "");
 //#define FSAA 1
 
 // Screen height used when aspect_ratio_correct=true.

@@ -1151,16 +1151,16 @@ void G_Ticker (void)
     oldgamestate = gamestate;
     
     // do main actions
-    switch (gamestate) 
-    { 
+    switch (gamestate)
+    {
       case GS_LEVEL:
 	P_Ticker ();
 #if DOOM_TINY
     if (!pre_wipe_state)
 #endif
 	    ST_Ticker ();
-	AM_Ticker (); 
-	HU_Ticker ();            
+	AM_Ticker ();
+	HU_Ticker ();
 	break; 
 	 
       case GS_INTERMISSION:

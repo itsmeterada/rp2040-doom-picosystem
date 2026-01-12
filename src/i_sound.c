@@ -200,6 +200,13 @@ static void InitSfxModule(boolean use_sfx_prefix)
 
 static void InitMusicModule(void)
 {
+#if PICO_ON_DEVICE
+    // TODO: PicoSystem doesn't support OPL music yet
+    // Skip music initialization to avoid hangs
+    music_module = NULL;
+    return;
+#endif
+
 #if !DOOM_TINY
     int i;
 
@@ -210,7 +217,7 @@ static void InitMusicModule(void)
         // Is the music device in the list of devices supported
         // by this module?
 
-        if (SndDeviceInList(snd_musicdevice, 
+        if (SndDeviceInList(snd_musicdevice,
                             music_modules[i]->sound_devices,
                             music_modules[i]->num_sound_devices))
         {
@@ -255,7 +262,7 @@ void I_InitSound(boolean use_sfx_prefix)
     //!
     // @vanilla
     //
-    // Disable sound effects. 
+    // Disable sound effects.
     //
 
     nosfx = M_CheckParm("-nosfx") > 0;
